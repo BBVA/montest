@@ -4,13 +4,6 @@
 
 A stochastic BDD framework for Python designed to test non-deterministic systems (e.g., LLMs) by evaluating statistical distributions rather than binary outcomes.
 
-## License
-
-Copyright 2026 Banco Bilbao Vizcaya Argentaria, S.A.
-
-Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
-See the [NOTICE](NOTICE) file for additional attribution information.
-
 ## Development Setup
 
 ### Prerequisites (without Nix)
@@ -45,3 +38,11 @@ nix develop
 ```
 
 This drops you into a shell that has `uv`, `task`, and Python 3.11–3.14 all ready to use. The same `task` commands above apply once you are inside the dev shell.
+
+## License
+
+Copyright 2026 Banco Bilbao Vizcaya Argentaria, S.A.
+
+Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+See the [NOTICE](NOTICE) file for additional attribution information.
+
