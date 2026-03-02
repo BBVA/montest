@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,9 +21,6 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
-      - name: Verify dev environment
-        run: nix develop --command bash -c "uv --version && python3.11 --version"
-
       - name: Sync dependencies
         run: nix develop --command bash -c "uv sync --extra dev"
 
@@ -33,5 +30,36 @@ jobs:
       - name: Check types
         run: nix develop --command bash -c "uv run mypy src"
 
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - python: "3.11"
+            tox-env: "py311"
+          - python: "3.12"
+            tox-env: "py312"
+          - python: "3.13"
+            tox-env: "py313"
+          - python: "3.14"
+            tox-env: "py314"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Verify dev environment
+        run: nix develop --command bash -c "uv --version && python${{ matrix.python }} --version"
+
+      - name: Sync dependencies
+        run: nix develop --command bash -c "uv sync --extra dev"
+
       - name: Run tests
-        run: nix develop --command bash -c "uv run pytest"
+        run: nix develop --command bash -c "uv run tox -e ${{ matrix.tox-env }}"
