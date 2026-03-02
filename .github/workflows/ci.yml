@@ -22,13 +22,13 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Sync dependencies
-        run: nix develop --command bash -c "uv sync --extra dev"
+        run: nix develop --command task sync
 
       - name: Check linter
-        run: nix develop --command bash -c "uv run ruff check src tests"
+        run: nix develop --command task lint
 
       - name: Check types
-        run: nix develop --command bash -c "uv run mypy src"
+        run: nix develop --command task typecheck
 
   test:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
         run: nix develop --command bash -c "uv --version && python${{ matrix.python }} --version"
 
       - name: Sync dependencies
-        run: nix develop --command bash -c "uv sync --extra dev"
+        run: nix develop --command task sync
 
       - name: Run tests
-        run: nix develop --command bash -c "uv run tox -e ${{ matrix.tox-env }}"
+        run: nix develop --command task test TOX_ENV=${{ matrix.tox-env }}

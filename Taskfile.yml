@@ -1,0 +1,24 @@
+version: "3"
+
+tasks:
+  sync:
+    desc: "Sync project dependencies"
+    cmds:
+      - uv sync --extra dev
+
+  lint:
+    desc: "Run ruff linter"
+    cmds:
+      - uv run ruff check src tests
+
+  typecheck:
+    desc: "Run mypy type checker"
+    cmds:
+      - uv run mypy src
+
+  test:
+    desc: "Run tests via tox (set TOX_ENV to py311/py312/py313/py314)"
+    vars:
+      TOX_ENV: '{{.TOX_ENV | default "py311"}}'
+    cmds:
+      - uv run tox -e {{.TOX_ENV}}
