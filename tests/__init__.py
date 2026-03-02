@@ -1,4 +1,4 @@
-# Copyright BBVA 2026
+# Copyright 2026 Banco Bilbao Vizcaya Argentaria, S.A.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
