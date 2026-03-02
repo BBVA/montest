@@ -20,12 +20,18 @@
           buildInputs = [
             pkgs.uv
             pkgs.python311
+            pkgs.python312
+            pkgs.python313
+            pkgs.python314
           ];
 
           shellHook = ''
             echo "montest dev environment ready"
-            echo "  uv:     $(uv --version)"
-            echo "  python: $(python3.11 --version)"
+            echo "  uv:        $(uv --version)"
+            echo "  python3.11: $(python3.11 --version)"
+            echo "  python3.12: $(python3.12 --version)"
+            echo "  python3.13: $(python3.13 --version)"
+            echo "  python3.14: $(python3.14 --version)"
           '';
         };
       });
