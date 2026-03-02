@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "montest"
+version = "0.1.0"
+description = "A stochastic BDD testing framework for non-deterministic systems."
+authors = [{ email = "robertomartinezp@gmail.com" }]
+license = { text = "Apache-2.0" }
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "gherkin-official>=29.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "hypothesis>=6.0.0",
+    "tox>=4.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/montest"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=montest --cov-report=term-missing"
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+
+[tool.coverage.run]
+source = ["src/montest"]
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py311, py312, py313, py314
+isolated_build = True
+
+[testenv]
+extras = dev
+commands =
+    pytest {posargs}
+"""
