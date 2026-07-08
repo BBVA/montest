@@ -31,6 +31,14 @@ def _child_decisions(
     }
 
 
+def _terminal_child_decisions(
+    result: CompositeResult[object],
+) -> Mapping[str, Decision]:
+    return {
+        key: child.decision for key, child in result.terminal_results.items()
+    }
+
+
 def test_all_of_runs_until_longest_child_decides() -> None:
     criterion = AllOf({"a": StopAfterN(2), "b": StopAfterN(4)})
 
@@ -45,6 +53,15 @@ def test_all_of_runs_until_longest_child_decides() -> None:
         Decision.ACCEPT_H1,
     ]
     assert results[-1].n_total == 2
+    assert [list(result.terminal_results) for result in results] == [
+        [],
+        ["a"],
+        ["a"],
+        ["a", "b"],
+    ]
+    assert all(
+        result.n_decided == len(result.terminal_results) for result in results
+    )
 
 
 def test_all_of_returns_none_for_child_results_after_that_child_decides() -> None:
@@ -57,6 +74,9 @@ def test_all_of_returns_none_for_child_results_after_that_child_decides() -> Non
     assert first_terminal.results["a"] is not None
     assert after_terminal.results["a"] is None
     assert isinstance(after_terminal.results["b"], ObservationResult)
+    assert first_terminal.terminal_results["a"] is first_terminal.results["a"]
+    assert after_terminal.terminal_results["a"] is first_terminal.results["a"]
+    assert after_terminal.n_decided == len(after_terminal.terminal_results) == 1
 
 
 def test_any_of_stops_when_first_child_accepts_h1() -> None:
@@ -67,10 +87,61 @@ def test_any_of_stops_when_first_child_accepts_h1() -> None:
 
     assert first.decision is Decision.CONTINUE
     assert terminal.decision is Decision.ACCEPT_H1
-    assert terminal.n_decided == terminal.n_total == 2
+    assert terminal.n_decided == len(terminal.terminal_results) == 1
     assert terminal.results["a"] is not None
     assert terminal.results["a"].decision is Decision.ACCEPT_H1
     assert terminal.results["b"] is None
+    assert terminal.n_total == 2
+    assert terminal.terminal_results["a"] is terminal.results["a"]
+    assert "b" not in terminal.terminal_results
+
+
+def test_all_of_final_result_preserves_terminal_results_from_earlier_samples() -> None:
+    criterion = AllOf({"a": StopAfterN(2), "b": StopAfterN(4)})
+
+    results = [criterion.observe(object(), index=index) for index in range(4)]
+    terminal = results[-1]
+
+    assert terminal.decision is Decision.ACCEPT_H1
+    assert terminal.results["a"] is None
+    assert terminal.results["b"] is terminal.terminal_results["b"]
+    assert terminal.terminal_results["a"] is results[1].results["a"]
+    assert terminal.terminal_results["a"].index == 1
+    assert terminal.terminal_results["a"].decision is Decision.ACCEPT_H1
+    assert terminal.terminal_results["b"].index == 3
+    assert (
+        terminal.n_decided
+        == len(terminal.terminal_results)
+        == terminal.n_total
+        == 2
+    )
+
+
+def test_any_of_early_accept_h1_preserves_prior_terminal_evidence_only() -> None:
+    criterion = AnyOf(
+        {
+            "prior_h0": StopAfterN(1, decision=Decision.ACCEPT_H0),
+            "winner": StopAfterN(2, decision=Decision.ACCEPT_H1),
+            "skipped": StopAfterN(5, decision=Decision.ACCEPT_H0),
+        }
+    )
+
+    first = criterion.observe(object(), index=0)
+    terminal = criterion.observe(object(), index=1)
+
+    assert first.decision is Decision.CONTINUE
+    assert _terminal_child_decisions(first) == {"prior_h0": Decision.ACCEPT_H0}
+    assert terminal.decision is Decision.ACCEPT_H1
+    assert terminal.results["prior_h0"] is None
+    assert terminal.results["winner"] is terminal.terminal_results["winner"]
+    assert terminal.results["skipped"] is None
+    assert _terminal_child_decisions(terminal) == {
+        "prior_h0": Decision.ACCEPT_H0,
+        "winner": Decision.ACCEPT_H1,
+    }
+    assert "skipped" not in terminal.terminal_results
+    assert terminal.n_decided == len(terminal.terminal_results) == 2
+    assert terminal.n_decided < terminal.n_total == 3
 
 
 def test_any_of_waits_for_all_children_when_no_child_accepts_h1() -> None:
@@ -90,7 +161,8 @@ def test_any_of_waits_for_all_children_when_no_child_accepts_h1() -> None:
         Decision.ACCEPT_H0,
     ]
     assert results[2].results["a"] is None
-    assert results[-1].n_decided == results[-1].n_total == 2
+    assert results[-1].n_decided == len(results[-1].terminal_results) == 2
+    assert results[-1].n_total == 2
 
 
 def test_all_of_resolves_accept_h0_over_inconclusive() -> None:
@@ -160,12 +232,47 @@ def test_any_of_resolves_inconclusive_after_all_children_terminal() -> None:
         Decision.CONTINUE,
         Decision.INCONCLUSIVE,
     ]
-    assert results[-1].n_decided == results[-1].n_total == 3
+    assert results[-1].n_decided == len(results[-1].terminal_results) == 3
+    assert results[-1].n_total == 3
     assert _child_decisions(results[-1]) == {
         "a": None,
         "b": Decision.INCONCLUSIVE,
         "c": None,
     }
+    assert _terminal_child_decisions(results[-1]) == {
+        "a": Decision.ACCEPT_H0,
+        "b": Decision.INCONCLUSIVE,
+        "c": Decision.ACCEPT_H0,
+    }
+
+
+def test_nested_composite_terminal_result_preserves_direct_parent_key() -> None:
+    nested = AllOf(
+        {
+            "inner_a": StopAfterN(1, decision=Decision.ACCEPT_H0),
+            "inner_b": StopAfterN(2, decision=Decision.ACCEPT_H0),
+        }
+    )
+    parent = AllOf({"nested": nested, "outer": StopAfterN(3)})
+
+    parent.observe(object(), index=0)
+    nested_terminal_step = parent.observe(object(), index=1)
+    parent_terminal = parent.observe(object(), index=2)
+
+    assert nested_terminal_step.results["nested"] is not None
+    assert isinstance(nested_terminal_step.results["nested"], CompositeResult)
+    assert nested_terminal_step.terminal_results["nested"] is (
+        nested_terminal_step.results["nested"]
+    )
+    assert parent_terminal.results["nested"] is None
+    nested_terminal = parent_terminal.terminal_results["nested"]
+    assert isinstance(nested_terminal, CompositeResult)
+    assert nested_terminal is nested_terminal_step.results["nested"]
+    assert list(parent_terminal.terminal_results) == ["nested", "outer"]
+    assert "inner_a" not in parent_terminal.terminal_results
+    assert "inner_b" not in parent_terminal.terminal_results
+    assert list(nested_terminal.terminal_results) == ["inner_a", "inner_b"]
+    assert parent_terminal.n_decided == len(parent_terminal.terminal_results) == 2
 
 
 def test_composite_rejects_empty_criteria_mapping() -> None:

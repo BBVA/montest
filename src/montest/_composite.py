@@ -30,6 +30,7 @@ S = TypeVar("S")
 @dataclasses.dataclass(frozen=True, slots=True)
 class CompositeResult(ObservationResult[S], Generic[S]):
     results: Mapping[str, ObservationResult[S] | None]
+    terminal_results: Mapping[str, ObservationResult[Any]]
     n_decided: int
     n_total: int
 
@@ -48,20 +49,20 @@ class _CompositeBase(Generic[S]):
 
         self._criteria = dict(criteria)
         self._resolve = resolve
-        self._terminal_decisions: dict[str, Decision] = {}
+        self._terminal_results: dict[str, ObservationResult[Any]] = {}
         self._terminal = False
 
     def reset(self) -> None:
         for criterion in self._criteria.values():
             criterion.reset()
-        self._terminal_decisions.clear()
+        self._terminal_results.clear()
         self._terminal = False
 
     def _terminal_decision_sequence(self) -> list[Decision]:
         return [
-            self._terminal_decisions[key]
+            self._terminal_results[key].decision
             for key in self._criteria
-            if key in self._terminal_decisions
+            if key in self._terminal_results
         ]
 
     def _result(
@@ -78,6 +79,7 @@ class _CompositeBase(Generic[S]):
             index=index,
             decision=decision,
             results=cast(Mapping[str, ObservationResult[S] | None], dict(results)),
+            terminal_results=dict(self._terminal_results),
             n_decided=n_decided,
             n_total=len(self._criteria),
         )
@@ -106,16 +108,16 @@ class AllOf(_CompositeBase[S]):
 
         results: dict[str, ObservationResult[Any] | None] = {}
         for key, criterion in self._criteria.items():
-            if key in self._terminal_decisions:
+            if key in self._terminal_results:
                 results[key] = None
                 continue
 
             result = criterion.observe(sample, index=index)
             results[key] = result
             if result.decision is not Decision.CONTINUE:
-                self._terminal_decisions[key] = result.decision
+                self._terminal_results[key] = result
 
-        n_decided = len(self._terminal_decisions)
+        n_decided = len(self._terminal_results)
         decision = Decision.CONTINUE
         if n_decided == len(self._criteria):
             decision = self._resolve(self._terminal_decision_sequence())
@@ -148,7 +150,7 @@ class AnyOf(_CompositeBase[S]):
         results: dict[str, ObservationResult[Any] | None] = {}
         stopped_early = False
         for key, criterion in self._criteria.items():
-            if key in self._terminal_decisions:
+            if key in self._terminal_results:
                 results[key] = None
                 continue
 
@@ -161,16 +163,15 @@ class AnyOf(_CompositeBase[S]):
             if result.decision is Decision.CONTINUE:
                 continue
 
-            self._terminal_decisions[key] = result.decision
+            self._terminal_results[key] = result
             if result.decision is Decision.ACCEPT_H1:
                 stopped_early = True
 
         n_total = len(self._criteria)
-        n_decided = len(self._terminal_decisions)
+        n_decided = len(self._terminal_results)
         decision = Decision.CONTINUE
         if stopped_early:
             decision = self._resolve(self._terminal_decision_sequence())
-            n_decided = n_total
             self._terminal = True
         elif n_decided == n_total:
             decision = self._resolve(self._terminal_decision_sequence())

@@ -57,6 +57,7 @@ class ExpectedCompositeResult:
     index: int
     decision: Decision
     results: Mapping[str, ExpectedChildResult | None]
+    terminal_results: Mapping[str, ExpectedChildResult]
     n_decided: int
     n_total: int
 
@@ -146,6 +147,7 @@ def _all_of_oracle(
     observed_counts = {script.name: 0 for script in scripts}
     observed_indices: dict[str, list[int]] = {script.name: [] for script in scripts}
     terminal_decisions: dict[str, Decision] = {}
+    terminal_results: dict[str, ExpectedChildResult] = {}
     results: list[ExpectedCompositeResult] = []
 
     for index in range(max(script.terminal_after for script in scripts)):
@@ -161,9 +163,12 @@ def _all_of_oracle(
             if observed_counts[script.name] >= script.terminal_after:
                 decision = script.terminal_decision
                 terminal_decisions[script.name] = decision
-            child_results[script.name] = ExpectedChildResult(
+            expected_child = ExpectedChildResult(
                 value=index, index=index, decision=decision
             )
+            if decision is not Decision.CONTINUE:
+                terminal_results[script.name] = expected_child
+            child_results[script.name] = expected_child
 
         n_decided = len(terminal_decisions)
         decision = Decision.CONTINUE
@@ -176,6 +181,7 @@ def _all_of_oracle(
                 index=index,
                 decision=decision,
                 results=child_results,
+                terminal_results=dict(terminal_results),
                 n_decided=n_decided,
                 n_total=len(scripts),
             )
@@ -194,6 +200,7 @@ def _any_of_oracle(
     observed_counts = {script.name: 0 for script in scripts}
     observed_indices: dict[str, list[int]] = {script.name: [] for script in scripts}
     terminal_decisions: dict[str, Decision] = {}
+    terminal_results: dict[str, ExpectedChildResult] = {}
     results: list[ExpectedCompositeResult] = []
 
     for index in range(max(script.terminal_after for script in scripts)):
@@ -212,15 +219,17 @@ def _any_of_oracle(
                 terminal_decisions[script.name] = decision
                 if decision is Decision.ACCEPT_H1:
                     stopped_early = True
-            child_results[script.name] = ExpectedChildResult(
+            expected_child = ExpectedChildResult(
                 value=index, index=index, decision=decision
             )
+            if decision is not Decision.CONTINUE:
+                terminal_results[script.name] = expected_child
+            child_results[script.name] = expected_child
 
         n_decided = len(terminal_decisions)
         decision = Decision.CONTINUE
         if stopped_early:
             decision = _any_of_resolve(_terminal_sequence(scripts, terminal_decisions))
-            n_decided = len(scripts)
         elif n_decided == len(scripts):
             decision = _any_of_resolve(_terminal_sequence(scripts, terminal_decisions))
 
@@ -230,6 +239,7 @@ def _any_of_oracle(
                 index=index,
                 decision=decision,
                 results=child_results,
+                terminal_results=dict(terminal_results),
                 n_decided=n_decided,
                 n_total=len(scripts),
             )
@@ -250,7 +260,9 @@ def _assert_composite_result_matches(
     assert actual.decision is expected.decision
     assert actual.n_decided == expected.n_decided
     assert actual.n_total == expected.n_total
+    assert actual.n_decided == len(actual.terminal_results)
     assert list(actual.results) == list(expected.results)
+    assert list(actual.terminal_results) == list(expected.terminal_results)
 
     for key, expected_child in expected.results.items():
         actual_child = actual.results[key]
@@ -258,6 +270,13 @@ def _assert_composite_result_matches(
             assert actual_child is None
             continue
 
+        assert isinstance(actual_child, ObservationResult)
+        assert actual_child.value == expected_child.value
+        assert actual_child.index == expected_child.index
+        assert actual_child.decision is expected_child.decision
+
+    for key, expected_child in expected.terminal_results.items():
+        actual_child = actual.terminal_results[key]
         assert isinstance(actual_child, ObservationResult)
         assert actual_child.value == expected_child.value
         assert actual_child.index == expected_child.index
@@ -294,6 +313,10 @@ def _direct_signature(
             )
             for key, child in result.results.items()
         ),
+        tuple(
+            (key, (child.value, child.index, child.decision))
+            for key, child in result.terminal_results.items()
+        ),
     )
 
 
@@ -310,6 +333,10 @@ def _nested_signature(result: ObservationResult[object] | None) -> object:
             tuple(
                 (key, _nested_signature(child))
                 for key, child in result.results.items()
+            ),
+            tuple(
+                (key, _nested_signature(child))
+                for key, child in result.terminal_results.items()
             ),
         )
     return result.value, result.index, result.decision
@@ -428,7 +455,8 @@ def test_nested_composite_results_are_preserved_under_direct_keys(
         seen_nested_result = True
 
     assert seen_nested_result
-    assert first_trace[-1].n_decided == 2
+    assert first_trace[-1].n_decided == len(first_trace[-1].terminal_results)
+    assert first_trace[-1].n_decided <= 2
 
     parent.reset()
     second_trace = _run_until_terminal(parent, max_steps=8)

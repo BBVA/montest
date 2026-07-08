@@ -27,6 +27,24 @@ Its identity is ``ACCEPT_H1``. ``ACCEPT_H0`` is absorbing.
 
 Both monoids provide ``combine(left, right)`` and ``resolve(decisions)``.
 
+Composite results
+-----------------
+
+``CompositeResult.results`` contains results from the current observation step.
+A ``None`` entry means that the child was not observed on that step.
+
+``CompositeResult.terminal_results`` contains the terminal result for every
+direct child that has reached a terminal decision so far. Use this mapping to
+inspect child-level evidence after a composite resolves.
+
+``n_decided`` is always ``len(terminal_results)``. It counts direct children
+with known terminal results; it does not mean the same thing as the composite
+itself being terminal.
+
+If ``results[key]`` is ``None`` and ``key`` is absent from
+``terminal_results``, that child was skipped or left pending rather than known
+terminal.
+
 AllOf
 -----
 
@@ -37,7 +55,7 @@ Rules:
 
 * already-terminal children are not observed again;
 * already-terminal child result entries are ``None`` on later observations;
-* ``n_decided`` counts direct children terminal after the current sample;
+* ``n_decided`` counts direct children with terminal results after the current sample;
 * ``n_total`` counts direct children;
 * the terminal decision is resolved with ``ALL_OF_DECISION_MONOID`` unless a custom resolver is supplied.
 
@@ -53,11 +71,12 @@ Rules:
 * unobserved or non-terminal child result entries are ``None`` in an early
   terminal result;
 * ``ACCEPT_H0`` and ``INCONCLUSIVE`` do not short-circuit;
-* if no child accepts H1 but any child is inconclusive, the final decision is
-  ``INCONCLUSIVE``;
 * if no child accepts H1, the composite continues until all direct children are
   terminal;
-* on terminal output, ``n_decided`` is ``n_total``.
+* if no child accepts H1 but any child is inconclusive, the final decision is
+  ``INCONCLUSIVE``;
+* on early terminal output, ``n_decided`` can be less than ``n_total`` because
+  some direct children may be unobserved or undecided.
 
 Nested composites
 -----------------
