@@ -21,7 +21,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from montest import AllOf, AnyOf, CompositeResult, Decision, ObservationResult
+from montest import (
+    ALL_OF_DECISION_MONOID,
+    ANY_OF_DECISION_MONOID,
+    AllOf,
+    AnyOf,
+    CompositeResult,
+    Decision,
+    ObservationResult,
+)
 
 TERMINAL_DECISIONS = st.sampled_from(
     [Decision.ACCEPT_H1, Decision.ACCEPT_H0, Decision.INCONCLUSIVE]
@@ -114,12 +122,12 @@ def _criteria_from_scripts(
     }
 
 
-def _default_resolve(decisions: list[Decision]) -> Decision:
-    if any(decision is Decision.ACCEPT_H1 for decision in decisions):
-        return Decision.ACCEPT_H1
-    if any(decision is Decision.INCONCLUSIVE for decision in decisions):
-        return Decision.INCONCLUSIVE
-    return Decision.ACCEPT_H0
+def _all_of_resolve(decisions: list[Decision]) -> Decision:
+    return ALL_OF_DECISION_MONOID.resolve(decisions)
+
+
+def _any_of_resolve(decisions: list[Decision]) -> Decision:
+    return ANY_OF_DECISION_MONOID.resolve(decisions)
 
 
 def _terminal_sequence(
@@ -160,7 +168,7 @@ def _all_of_oracle(
         n_decided = len(terminal_decisions)
         decision = Decision.CONTINUE
         if n_decided == len(scripts):
-            decision = _default_resolve(_terminal_sequence(scripts, terminal_decisions))
+            decision = _all_of_resolve(_terminal_sequence(scripts, terminal_decisions))
 
         results.append(
             ExpectedCompositeResult(
@@ -211,10 +219,10 @@ def _any_of_oracle(
         n_decided = len(terminal_decisions)
         decision = Decision.CONTINUE
         if stopped_early:
-            decision = _default_resolve(_terminal_sequence(scripts, terminal_decisions))
+            decision = _any_of_resolve(_terminal_sequence(scripts, terminal_decisions))
             n_decided = len(scripts)
         elif n_decided == len(scripts):
-            decision = _default_resolve(_terminal_sequence(scripts, terminal_decisions))
+            decision = _any_of_resolve(_terminal_sequence(scripts, terminal_decisions))
 
         results.append(
             ExpectedCompositeResult(
@@ -320,7 +328,7 @@ def test_all_of_matches_direct_composite_oracle(
         actual = criterion.observe(expected.value, index=expected.index)
         _assert_composite_result_matches(actual, expected)
 
-    assert expected_results[-1].decision is _default_resolve(
+    assert expected_results[-1].decision is _all_of_resolve(
         [script.terminal_decision for script in scripts]
     )
     assert {

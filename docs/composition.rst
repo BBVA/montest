@@ -4,19 +4,28 @@ Composition
 Montest composes criteria explicitly with ``AllOf`` and ``AnyOf``. Composite
 keys are owned by the mapping passed to the composite, not by child criteria.
 
-Default resolver
+Decision monoids
 ----------------
 
-When a composite reaches a terminal state, the default resolver applies this
-order:
+Composite terminal decisions are resolved with explicit decision monoids.
+
+``ANY_OF_DECISION_MONOID`` models disjunction over terminal decisions:
 
 .. code-block:: python
 
-   if any(decision is Decision.ACCEPT_H1 for decision in decisions):
-       return Decision.ACCEPT_H1
-   if any(decision is Decision.INCONCLUSIVE for decision in decisions):
-       return Decision.INCONCLUSIVE
-   return Decision.ACCEPT_H0
+   ACCEPT_H0 < INCONCLUSIVE < ACCEPT_H1
+
+Its identity is ``ACCEPT_H0``. ``ACCEPT_H1`` is absorbing.
+
+``ALL_OF_DECISION_MONOID`` models conjunction over terminal decisions:
+
+.. code-block:: python
+
+   ACCEPT_H1 < INCONCLUSIVE < ACCEPT_H0
+
+Its identity is ``ACCEPT_H1``. ``ACCEPT_H0`` is absorbing.
+
+Both monoids provide ``combine(left, right)`` and ``resolve(decisions)``.
 
 AllOf
 -----
@@ -30,7 +39,7 @@ Rules:
 * already-terminal child result entries are ``None`` on later observations;
 * ``n_decided`` counts direct children terminal after the current sample;
 * ``n_total`` counts direct children;
-* the terminal decision is resolved from all direct terminal decisions.
+* the terminal decision is resolved with ``ALL_OF_DECISION_MONOID`` unless a custom resolver is supplied.
 
 AnyOf
 -----
@@ -44,6 +53,8 @@ Rules:
 * unobserved or non-terminal child result entries are ``None`` in an early
   terminal result;
 * ``ACCEPT_H0`` and ``INCONCLUSIVE`` do not short-circuit;
+* if no child accepts H1 but any child is inconclusive, the final decision is
+  ``INCONCLUSIVE``;
 * if no child accepts H1, the composite continues until all direct children are
   terminal;
 * on terminal output, ``n_decided`` is ``n_total``.

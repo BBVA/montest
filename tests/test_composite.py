@@ -93,7 +93,7 @@ def test_any_of_waits_for_all_children_when_no_child_accepts_h1() -> None:
     assert results[-1].n_decided == results[-1].n_total == 2
 
 
-def test_default_resolve_returns_inconclusive_when_no_child_accepts_h1() -> None:
+def test_all_of_resolves_accept_h0_over_inconclusive() -> None:
     criterion = AllOf(
         {
             "a": StopAfterN(1, decision=Decision.INCONCLUSIVE),
@@ -103,10 +103,68 @@ def test_default_resolve_returns_inconclusive_when_no_child_accepts_h1() -> None
 
     result = criterion.observe(object(), index=0)
 
-    assert result.decision is Decision.INCONCLUSIVE
+    assert result.decision is Decision.ACCEPT_H0
     assert _child_decisions(result) == {
         "a": Decision.INCONCLUSIVE,
         "b": Decision.ACCEPT_H0,
+    }
+
+
+def test_all_of_resolves_inconclusive_when_no_child_accepts_h0() -> None:
+    criterion = AllOf(
+        {
+            "a": StopAfterN(1, decision=Decision.ACCEPT_H1),
+            "b": StopAfterN(1, decision=Decision.INCONCLUSIVE),
+        }
+    )
+
+    result = criterion.observe(object(), index=0)
+
+    assert result.decision is Decision.INCONCLUSIVE
+    assert _child_decisions(result) == {
+        "a": Decision.ACCEPT_H1,
+        "b": Decision.INCONCLUSIVE,
+    }
+
+
+def test_all_of_resolves_accept_h1_when_all_children_accept_h1() -> None:
+    criterion = AllOf(
+        {
+            "a": StopAfterN(1, decision=Decision.ACCEPT_H1),
+            "b": StopAfterN(1, decision=Decision.ACCEPT_H1),
+        }
+    )
+
+    result = criterion.observe(object(), index=0)
+
+    assert result.decision is Decision.ACCEPT_H1
+    assert _child_decisions(result) == {
+        "a": Decision.ACCEPT_H1,
+        "b": Decision.ACCEPT_H1,
+    }
+
+
+def test_any_of_resolves_inconclusive_after_all_children_terminal() -> None:
+    criterion = AnyOf(
+        {
+            "a": StopAfterN(1, decision=Decision.ACCEPT_H0),
+            "b": StopAfterN(3, decision=Decision.INCONCLUSIVE),
+            "c": StopAfterN(2, decision=Decision.ACCEPT_H0),
+        }
+    )
+
+    results = [criterion.observe(object(), index=index) for index in range(3)]
+
+    assert [result.decision for result in results] == [
+        Decision.CONTINUE,
+        Decision.CONTINUE,
+        Decision.INCONCLUSIVE,
+    ]
+    assert results[-1].n_decided == results[-1].n_total == 3
+    assert _child_decisions(results[-1]) == {
+        "a": None,
+        "b": Decision.INCONCLUSIVE,
+        "c": None,
     }
 
 

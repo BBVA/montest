@@ -19,18 +19,13 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Generic, TypeVar, cast
 
 from montest._criterion import StoppingCriterion
+from montest._decision_monoid import (
+    ALL_OF_DECISION_MONOID,
+    ANY_OF_DECISION_MONOID,
+)
 from montest._types import Decision, ObservationResult
 
 S = TypeVar("S")
-
-
-def _default_resolve(decisions: Sequence[Decision]) -> Decision:
-    if any(decision is Decision.ACCEPT_H1 for decision in decisions):
-        return Decision.ACCEPT_H1
-    if any(decision is Decision.INCONCLUSIVE for decision in decisions):
-        return Decision.INCONCLUSIVE
-    return Decision.ACCEPT_H0
-
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class CompositeResult(ObservationResult[S], Generic[S]):
@@ -44,7 +39,7 @@ class _CompositeBase(Generic[S]):
         self,
         criteria: Mapping[str, StoppingCriterion[S, ObservationResult[Any]]],
         *,
-        resolve: Callable[[Sequence[Decision]], Decision] | None = None,
+        resolve: Callable[[Sequence[Decision]], Decision],
     ) -> None:
         if not criteria:
             raise ValueError("criteria must not be empty")
@@ -52,7 +47,7 @@ class _CompositeBase(Generic[S]):
             raise ValueError("criterion keys must be non-empty strings")
 
         self._criteria = dict(criteria)
-        self._resolve = resolve or _default_resolve
+        self._resolve = resolve
         self._terminal_decisions: dict[str, Decision] = {}
         self._terminal = False
 
@@ -101,7 +96,10 @@ class AllOf(_CompositeBase[S]):
         *,
         resolve: Callable[[Sequence[Decision]], Decision] | None = None,
     ) -> None:
-        super().__init__(criteria, resolve=resolve)
+        super().__init__(
+            criteria,
+            resolve=resolve or ALL_OF_DECISION_MONOID.resolve,
+        )
 
     def observe(self, sample: S, *, index: int) -> CompositeResult[S]:
         self._ensure_running()
@@ -139,7 +137,10 @@ class AnyOf(_CompositeBase[S]):
         *,
         resolve: Callable[[Sequence[Decision]], Decision] | None = None,
     ) -> None:
-        super().__init__(criteria, resolve=resolve)
+        super().__init__(
+            criteria,
+            resolve=resolve or ANY_OF_DECISION_MONOID.resolve,
+        )
 
     def observe(self, sample: S, *, index: int) -> CompositeResult[S]:
         self._ensure_running()
