@@ -2,7 +2,47 @@
 
 [![CI](https://github.com/BBVA/montest/actions/workflows/ci.yml/badge.svg)](https://github.com/BBVA/montest/actions/workflows/ci.yml)
 
-A stochastic BDD framework for Python designed to test non-deterministic systems (e.g., LLMs) by evaluating statistical distributions rather than binary outcomes.
+A stochastic testing framework for Python designed to test non-deterministic systems by evaluating statistical evidence across repeated observations instead of relying on one-shot binary assertions.
+
+## Core install
+
+```bash
+pip install montest
+```
+
+The base install ships the core stochastic engine only and has no runtime dependencies.
+
+## Quick start
+
+```python
+import math
+import random
+
+from montest import Decision, SequentialIterator, sprt
+
+
+def bernoulli_llr(value: int) -> float:
+    return math.log(0.6 / 0.3) if value else math.log(0.4 / 0.7)
+
+
+rng = random.Random(42)
+criterion = sprt(llr=bernoulli_llr, alpha=0.05, beta=0.10)
+
+for sample in SequentialIterator(lambda: int(rng.random() < 0.6), criterion):
+    print(sample.index, sample.value, sample.decision.value)
+    if sample.decision is not Decision.CONTINUE:
+        break
+```
+
+Future testing-tool integrations are intended to live behind optional install groups such as `montest[pytest]` and `montest[behave]`; this release only ships the zero-dependency core.
+
+## Documentation
+
+Build local documentation with:
+
+```bash
+task docs
+```
 
 ## Development Setup
 

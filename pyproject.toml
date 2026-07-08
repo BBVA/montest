@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "montest"
 version = "0.1.0"
-description = "A stochastic BDD testing framework for non-deterministic systems."
+description = "A stochastic testing framework for non-deterministic systems."
 authors = [{ email = "robertomartinezp@gmail.com" }]
 license = { text = "Apache-2.0" }
 readme = "README.md"
@@ -17,9 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = [
-    "gherkin-official>=29.0.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -29,6 +27,7 @@ dev = [
     "tox>=4.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "sphinx>=8.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
