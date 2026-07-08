@@ -14,6 +14,11 @@
 
 from montest._composite import AllOf, AnyOf, CompositeResult
 from montest._criterion import StoppingCriterion
+from montest._decision_monoid import (
+    ALL_OF_DECISION_MONOID,
+    ANY_OF_DECISION_MONOID,
+    DecisionMonoid,
+)
 from montest._iterator_async import AsyncSequentialIterator
 from montest._iterator_sync import SequentialIterator
 from montest._types import Decision, ObservationResult
@@ -24,10 +29,13 @@ __version__ = "0.1.0"
 __all__ = [
     "__version__",
     "AllOf",
+    "ALL_OF_DECISION_MONOID",
     "AnyOf",
+    "ANY_OF_DECISION_MONOID",
     "AsyncSequentialIterator",
     "CompositeResult",
     "Decision",
+    "DecisionMonoid",
     "ObservationResult",
     "SPRT",
     "SPRTResult",

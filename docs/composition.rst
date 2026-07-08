@@ -4,19 +4,46 @@ Composition
 Montest composes criteria explicitly with ``AllOf`` and ``AnyOf``. Composite
 keys are owned by the mapping passed to the composite, not by child criteria.
 
-Default resolver
+Decision monoids
 ----------------
 
-When a composite reaches a terminal state, the default resolver applies this
-order:
+Composite terminal decisions are resolved with explicit decision monoids.
+
+``ANY_OF_DECISION_MONOID`` models disjunction over terminal decisions:
 
 .. code-block:: python
 
-   if any(decision is Decision.ACCEPT_H1 for decision in decisions):
-       return Decision.ACCEPT_H1
-   if any(decision is Decision.INCONCLUSIVE for decision in decisions):
-       return Decision.INCONCLUSIVE
-   return Decision.ACCEPT_H0
+   ACCEPT_H0 < INCONCLUSIVE < ACCEPT_H1
+
+Its identity is ``ACCEPT_H0``. ``ACCEPT_H1`` is absorbing.
+
+``ALL_OF_DECISION_MONOID`` models conjunction over terminal decisions:
+
+.. code-block:: python
+
+   ACCEPT_H1 < INCONCLUSIVE < ACCEPT_H0
+
+Its identity is ``ACCEPT_H1``. ``ACCEPT_H0`` is absorbing.
+
+Both monoids provide ``combine(left, right)`` and ``resolve(decisions)``.
+
+Composite results
+-----------------
+
+``CompositeResult.results`` contains results from the current observation step.
+A ``None`` entry means that the child was not observed on that step.
+
+``CompositeResult.terminal_results`` contains the terminal result for every
+direct child that has reached a terminal decision so far. Use this mapping to
+inspect child-level evidence after a composite resolves.
+
+``n_decided`` is always ``len(terminal_results)``. It counts direct children
+with known terminal results; it does not mean the same thing as the composite
+itself being terminal.
+
+If ``results[key]`` is ``None`` and ``key`` is absent from
+``terminal_results``, that child was skipped or left pending rather than known
+terminal.
 
 AllOf
 -----
@@ -28,9 +55,9 @@ Rules:
 
 * already-terminal children are not observed again;
 * already-terminal child result entries are ``None`` on later observations;
-* ``n_decided`` counts direct children terminal after the current sample;
+* ``n_decided`` counts direct children with terminal results after the current sample;
 * ``n_total`` counts direct children;
-* the terminal decision is resolved from all direct terminal decisions.
+* the terminal decision is resolved with ``ALL_OF_DECISION_MONOID`` unless a custom resolver is supplied.
 
 AnyOf
 -----
@@ -46,7 +73,10 @@ Rules:
 * ``ACCEPT_H0`` and ``INCONCLUSIVE`` do not short-circuit;
 * if no child accepts H1, the composite continues until all direct children are
   terminal;
-* on terminal output, ``n_decided`` is ``n_total``.
+* if no child accepts H1 but any child is inconclusive, the final decision is
+  ``INCONCLUSIVE``;
+* on early terminal output, ``n_decided`` can be less than ``n_total`` because
+  some direct children may be unobserved or undecided.
 
 Nested composites
 -----------------
