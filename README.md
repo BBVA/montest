@@ -36,6 +36,14 @@ for sample in SequentialIterator(lambda: int(rng.random() < 0.6), criterion):
 
 Future testing-tool integrations are intended to live behind optional install groups such as `montest[pytest]` and `montest[behave]`; this release only ships the zero-dependency core.
 
+## Documentation
+
+Build local documentation with:
+
+```bash
+task docs
+```
+
 ## Development Setup
 
 ### Prerequisites (without Nix)
