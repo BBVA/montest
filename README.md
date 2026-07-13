@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/BBVA/montest/actions/workflows/ci.yml/badge.svg)](https://github.com/BBVA/montest/actions/workflows/ci.yml)
 
-A stochastic testing framework for Python designed to test non-deterministic systems by evaluating statistical evidence across repeated observations instead of relying on one-shot binary assertions.
+Montest tests nondeterministic Python behavior by collecting repeated observations
+until a stopping criterion reaches a decision, instead of treating one random
+outcome as conclusive.
 
 ## Core install
 
@@ -10,31 +12,59 @@ A stochastic testing framework for Python designed to test non-deterministic sys
 pip install montest
 ```
 
-The base install ships the core stochastic engine only and has no runtime dependencies.
+The base install contains the dependency-free stochastic core and has no runtime
+dependencies. Use its sequential iterators and criteria directly when pytest is
+not the test runner.
 
-## Quick start
+## Pytest workflow
 
-```python
-import math
-import random
+Install the explicit optional adapter:
 
-from montest import Decision, SequentialIterator, sprt
-
-
-def bernoulli_llr(value: int) -> float:
-    return math.log(0.6 / 0.3) if value else math.log(0.4 / 0.7)
-
-
-rng = random.Random(42)
-criterion = sprt(llr=bernoulli_llr, alpha=0.05, beta=0.10)
-
-for sample in SequentialIterator(lambda: int(rng.random() < 0.6), criterion):
-    print(sample.index, sample.value, sample.decision.value)
-    if sample.decision is not Decision.CONTINUE:
-        break
+```bash
+pip install "montest[pytest]"
 ```
 
-Future testing-tool integrations are intended to live behind optional install groups such as `montest[pytest]` and `montest[behave]`; this release only ships the zero-dependency core.
+`import montest` remains dependency-free and does not import pytest. The adapter
+is `montest.pytest`; it installs no plugin, marker, decorator, or injected
+fixture. Define an ordinary fixture for raw samples, create a fresh criterion
+for each test, turn each raw sample into one domain observation, and assert the
+named domain decision:
+
+```python
+import pytest
+
+from montest import Decision
+from montest.pytest import CachedSamples, cached_samples, stochastic
+
+NO_BIAS_DETECTED = Decision.ACCEPT_H0
+
+
+@pytest.fixture(scope="session")
+def samples() -> CachedSamples[bool]:
+    return cached_samples(read_one_flip)
+
+
+def test_coin_has_no_bias(samples: CachedSamples[bool]) -> None:
+    with stochastic(samples, detect_coin_bias()) as run:
+        for raw_flip in run:
+            run.observe(raw_flip is True)
+
+    run.assert_decision(NO_BIAS_DETECTED)
+```
+
+The fixture controls cache lifetime; the test body controls the domain
+transformation. `ACCEPT_H0` supports the configured acceptable model over the
+chosen concerning alternative, `ACCEPT_H1` reports the concerning behavior, and
+`INCONCLUSIVE` means the configured sample budget ended first.
+
+Read the [pytest developer guide](docs/integrations.rst) before configuring a
+criterion. For complete progressive, runnable tests, start with
+[examples/pytest/README.md](examples/pytest/README.md), then the
+[coin](examples/pytest/tests/test_coin_fairness.py),
+[dice](examples/pytest/tests/test_dice_fairness.py),
+[roulette](examples/pytest/tests/test_roulette_fairness.py), and
+[LLM](examples/pytest/tests/test_llm_emoji.py) modules. The adapter is
+synchronous; Behave support remains planned only.
 
 ## Documentation
 
@@ -60,24 +90,24 @@ Once the tools are available, install the project dependencies:
 task sync
 ```
 
-Then you can run the individual workflow steps:
+Then run individual workflow steps:
 
 ```bash
-task lint        # ruff linter
-task typecheck   # mypy type checker
-task test        # run tests with the default tox env (py311)
-task test TOX_ENV=py313  # run tests against a specific Python version
+task lint
+task typecheck
+task test
+task test TOX_ENV=py313
 ```
 
 ### Prerequisites (with Nix)
 
-If you have [Nix](https://nixos.org/) with [flakes](https://nixos.wiki/wiki/Flakes) enabled, all required tools are provided automatically by the dev shell — no manual installation needed:
+If you have [Nix](https://nixos.org/) with [flakes](https://nixos.wiki/wiki/Flakes) enabled, the dev shell provides all required tools:
 
 ```bash
 nix develop
 ```
 
-This drops you into a shell that has `uv`, `task`, and Python 3.11–3.14 all ready to use. The same `task` commands above apply once you are inside the dev shell.
+The same `task` commands apply in that shell.
 
 ## License
 
@@ -85,4 +115,3 @@ Copyright 2026 Banco Bilbao Vizcaya Argentaria, S.A.
 
 Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 See the [NOTICE](NOTICE) file for additional attribution information.
-

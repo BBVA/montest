@@ -1,6 +1,12 @@
 API reference
 =============
 
+For the pytest workflow and normal domain-level assertions, read
+:doc:`integrations` before using this reference. Its runnable companion is
+`examples/pytest/README.md <../examples/pytest/README.md>`_. This page records
+public symbols and contracts rather than prescribing feature-test evidence
+assertions.
+
 Core API
 --------
 
@@ -45,3 +51,21 @@ SPRT
    :members:
 
 .. autofunction:: montest.sprt
+
+pytest adapter
+--------------
+
+Install ``montest[pytest]`` before importing this optional adapter. It is not
+imported by the dependency-free ``montest`` core. The adapter is synchronous,
+explicit, and has no pytest plugin or injected fixture; see :doc:`integrations`
+for its lifecycle and error contracts.
+
+.. autoclass:: montest.pytest.CachedSamples
+   :members:
+
+.. autoclass:: montest.pytest.StochasticRun
+   :members:
+
+.. autofunction:: montest.pytest.cached_samples
+
+.. autofunction:: montest.pytest.stochastic

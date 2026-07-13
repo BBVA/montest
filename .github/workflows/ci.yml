@@ -21,6 +21,11 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
+      - name: Verify lockfiles
+        run: |
+          nix develop --command uv lock --check
+          nix develop --command uv lock --project examples/pytest --check
+
       - name: Sync dependencies
         run: nix develop --command task sync
 
@@ -29,6 +34,13 @@ jobs:
 
       - name: Check types
         run: nix develop --command task typecheck
+
+      - name: Verify docs and pytest examples
+        run: |
+          nix develop --command task docs
+          nix develop --command uv run --project examples/pytest --locked python examples/pytest/runner.py list
+          nix develop --command uv run --project examples/pytest --locked python examples/pytest/runner.py run offline -q
+          nix develop --command env -u GOOGLE_API_KEY -u GEMINI_API_KEY uv run --project examples/pytest --extra llm --locked pytest examples/pytest/tests/test_llm_emoji.py -q
 
   test:
     runs-on: ubuntu-latest

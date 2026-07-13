@@ -1,25 +1,23 @@
 montest documentation
 =====================
 
-Montest is a stochastic testing framework for Python. It tests
-non-deterministic systems by evaluating statistical evidence across repeated
-observations instead of relying on one-shot binary assertions.
+Montest is a stochastic testing framework for Python. It evaluates repeated
+nondeterministic observations until a stopping criterion can make a decision,
+rather than treating a one-shot binary assertion as conclusive.
 
 Current scope
 -------------
 
-The current package ships the zero-dependency stochastic core:
+The package ships a dependency-free core with sequential sampling helpers,
+synchronous and asynchronous iterators, typed observation results, stopping
+criteria, Wald SPRT, and explicit ``AllOf``/``AnyOf`` composition.
 
-* sequential sampling helpers;
-* sync and async iterators;
-* typed observation results;
-* stopping criteria;
-* Wald SPRT;
-* explicit ``AllOf`` and ``AnyOf`` composition.
-
-Testing-tool integrations are intentionally not part of the current package.
-Future pytest and behave integrations should live behind optional install
-groups only after those adapters exist and are tested.
+For pytest users, the optional ``montest[pytest]`` extra provides the explicit,
+synchronous ``montest.pytest`` adapter. It does not change plain ``import
+montest`` and it installs no pytest plugin or injected fixture. Start with the
+:doc:`pytest developer guide <integrations>` and the complete runnable
+`examples/pytest guide <../examples/pytest/README.md>`_. Behave support is
+planned only.
 
 .. toctree::
    :maxdepth: 2

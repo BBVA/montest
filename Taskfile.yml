@@ -9,12 +9,12 @@ tasks:
   lint:
     desc: "Run ruff linter"
     cmds:
-      - uv run ruff check src tests
+      - uv run ruff check src tests examples/pytest
 
   typecheck:
     desc: "Run mypy type checker"
     cmds:
-      - uv run mypy src
+      - uv run mypy src tests/typing/pytest_api.py
 
   test:
     desc: "Run tests via tox (set TOX_ENV to py311/py312/py313/py314)"

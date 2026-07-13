@@ -4,15 +4,34 @@ Installation
 Core install
 ------------
 
-Install Montest with pip:
+Install the dependency-free Montest core:
 
 .. code-block:: bash
 
    pip install montest
 
-The base install has no runtime dependencies. It contains only the stochastic
-core: decisions, observation results, stopping criteria, sequential iterators,
-SPRT, and explicit composites.
+The base package contains decisions, observation results, stopping criteria,
+sequential iterators, SPRT, and explicit composites. It has no runtime
+dependencies.
+
+pytest adapter
+--------------
+
+Install the optional synchronous pytest adapter in the environment that runs
+your tests:
+
+.. code-block:: bash
+
+   pip install "montest[pytest]"
+
+Import its public constructors from ``montest.pytest``. Plain ``import
+montest`` remains dependency-free and does not import pytest. The adapter adds
+no plugin, marker, decorator, or injected fixture: declare normal pytest
+fixtures for raw samples and use the explicit run in the test body.
+
+Read :doc:`integrations` for the developer workflow, cache scope, decisions,
+and failure behavior. The complete progressive examples are in
+`examples/pytest/README.md <../examples/pytest/README.md>`_.
 
 Development setup
 -----------------
@@ -41,18 +60,16 @@ If Nix flakes are enabled, enter the dev shell first:
 
    nix develop
 
-The shell provides ``uv``, ``task``, and the supported Python versions. The same
+The shell provides ``uv``, ``task``, and supported Python versions. The same
 ``task`` commands apply inside the shell.
 
 Documentation tooling
 ---------------------
 
-Sphinx is a development dependency. It is not a runtime dependency of the base
+Sphinx is a development dependency, not a runtime dependency of the base
 package.
 
 Future integration extras
 -------------------------
 
-pytest and behave integrations are planned but not present. Do not document or
-use runnable ``montest[pytest]`` or ``montest[behave]`` install commands until
-those adapters exist.
+Behave support remains planned only. ``montest[behave]`` is not available.

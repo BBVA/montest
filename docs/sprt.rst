@@ -21,8 +21,10 @@ Construction
 Parameters:
 
 * ``llr``: per-sample log-likelihood ratio;
-* ``alpha``: Type I error bound;
-* ``beta``: Type II error bound;
+* ``alpha``: nominal Type I error target used to construct the approximate Wald
+  thresholds;
+* ``beta``: nominal Type II error target used to construct the approximate Wald
+  thresholds;
 * ``max_samples``: optional finite cap.
 
 Wald bounds
@@ -41,6 +43,21 @@ Decision rules:
 * ``cumulative_llr <= lower`` returns ``Decision.ACCEPT_H0``;
 * reaching ``max_samples`` inside the bounds returns ``Decision.INCONCLUSIVE``;
 * otherwise the result is ``Decision.CONTINUE``.
+
+Approximation and model assumptions
+-----------------------------------
+
+The Wald threshold formulas are approximations, not unconditional exact
+alpha/beta guarantees. In particular, a discrete observation can cross a boundary
+by more than the threshold (boundary overshoot), so the nominal targets do not by
+themselves determine exact operating error probabilities. A finite
+``max_samples`` can instead produce ``Decision.INCONCLUSIVE``.
+
+The caller remains responsible for supplying a likelihood-ratio process whose
+modeling assumptions hold for the observations—for example, correctly specified
+within-test iid observations or another explicitly valid conditional model.
+Montest does not validate those assumptions or guarantee the resulting operating
+characteristics.
 
 Result fields
 -------------
