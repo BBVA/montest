@@ -2,9 +2,9 @@ Testing Montest
 ===============
 
 This page is for Montest maintainers and framework contributors. Application
-tests should follow the domain-first workflow in :doc:`integrations` and usually
-assert only a named domain decision. Start runnable application examples at
-`examples/pytest/README.md <../examples/pytest/README.md>`_.
+tests should follow the domain-first workflow in :doc:`integrations` and
+usually assert only a named domain decision. Start with the `runnable pytest
+examples <https://github.com/BBVA/montest/tree/main/examples/pytest>`_.
 
 Test philosophy
 ---------------

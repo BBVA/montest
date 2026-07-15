@@ -67,7 +67,8 @@ uv run --project examples/pytest python examples/pytest/runner.py run offline -q
 2. [Dice fairness](tests/test_dice_fairness.py) maps each raw pair of rolls to
    two related observations and combines the child criteria.
 3. [Roulette fairness](tests/test_roulette_fairness.py) shows a three-child
-   composite and how to inspect each child's terminal evidence.
+   composite that lets every color criterion receive each spin while resolving
+   the wheel-level requirement as concerning when any color is overrepresented.
 4. [Live LLM emoji behavior](tests/test_llm_emoji.py) keeps that same test
    shape while samples are paid, networked model responses. Read its warnings
    and setup requirements before running it.

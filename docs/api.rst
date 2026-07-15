@@ -1,11 +1,11 @@
 API reference
 =============
 
-For the pytest workflow and normal domain-level assertions, read
-:doc:`integrations` before using this reference. Its runnable companion is
-`examples/pytest/README.md <../examples/pytest/README.md>`_. This page records
-public symbols and contracts rather than prescribing feature-test evidence
-assertions.
+For the pytest application workflow and normal domain-level assertions, read
+:doc:`integrations` before using this reference. Its `runnable examples
+<https://github.com/BBVA/montest/tree/main/examples/pytest>`_ provide the
+progressive learning path. This page records public symbols and contracts
+rather than prescribing feature-test evidence assertions.
 
 Core API
 --------

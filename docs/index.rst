@@ -15,8 +15,8 @@ criteria, Wald SPRT, and explicit ``AllOf``/``AnyOf`` composition.
 For pytest users, the optional ``montest[pytest]`` extra provides the explicit,
 synchronous ``montest.pytest`` adapter. It does not change plain ``import
 montest`` and it installs no pytest plugin or injected fixture. Start with the
-:doc:`pytest developer guide <integrations>` and the complete runnable
-`examples/pytest guide <../examples/pytest/README.md>`_. Behave support is
+:doc:`pytest integration guide <integrations>` and the `runnable pytest examples
+<https://github.com/BBVA/montest/tree/main/examples/pytest>`_. Behave support is
 planned only.
 
 .. toctree::

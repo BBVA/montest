@@ -32,9 +32,10 @@ montest`` remains dependency-free and does not import pytest. The adapter adds
 no plugin, marker, decorator, or injected fixture: declare normal pytest
 fixtures for raw samples and use the explicit run in the test body.
 
-Read :doc:`integrations` for the developer workflow, cache scope, decisions,
-and failure behavior. The complete progressive examples are in
-`examples/pytest/README.md <../examples/pytest/README.md>`_.
+Read :doc:`integrations` for the pytest workflow, cache scope, decisions, and
+failure behavior. The `complete runnable examples
+<https://github.com/BBVA/montest/tree/main/examples/pytest>`_ provide the
+progressive learning path.
 
 Development setup
 -----------------

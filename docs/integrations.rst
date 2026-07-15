@@ -8,29 +8,53 @@ budget chosen for that test. This is useful for randomized algorithms, sampled
 services, simulations, probabilistic models, and live systems with controlled
 nondeterminism.
 
-Start with the complete, runnable learning path in
-`examples/pytest/README.md <../examples/pytest/README.md>`_. It explains the
-same workflow in progressively richer tests:
+Run the examples first
+----------------------
 
-* `coin fairness <../examples/pytest/tests/test_coin_fairness.py>`_ starts with
-  one Boolean observation per flip and a named domain requirement;
-* `dice fairness <../examples/pytest/tests/test_dice_fairness.py>`_ shows how
-  one raw roll can become several related observations;
-* `roulette fairness <../examples/pytest/tests/test_roulette_fairness.py>`_
-  shows a composed requirement; and
-* `LLM emoji behavior <../examples/pytest/tests/test_llm_emoji.py>`_ applies
-  the pattern to live text responses and a fixed model configuration.
+The executable pytest examples are the primary learning path. From a repository
+checkout, run the offline scenarios:
+
+.. code-block:: console
+
+   uv run --project examples/pytest \
+      python examples/pytest/runner.py run offline -q
+
+This runs the coin, dice, and roulette scenarios without credentials, network
+access, or paid API calls. Read the examples in this order:
+
+* `coin fairness
+  <https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_coin_fairness.py>`_
+  starts with one Boolean observation per flip and a named domain requirement;
+* `dice fairness
+  <https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_dice_fairness.py>`_
+  maps one raw pair of rolls to two related child observations;
+* `roulette fairness
+  <https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_roulette_fairness.py>`_
+  shows a three-child composite with a domain-specific resolver; and
+* `LLM emoji behavior
+  <https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_llm_emoji.py>`_
+  applies the same workflow to live text responses and a fixed model
+  configuration.
+
+The `complete example guide
+<https://github.com/BBVA/montest/tree/main/examples/pytest>`_ explains setup,
+runner groups, known-defect demonstrations, and the paid live scenario.
+
 
 Installation
 ------------
 
-Install the optional adapter from Git in the environment that runs pytest:
+Install the optional adapter in the environment that runs a consuming project's
+pytest tests:
 
 .. code-block:: console
 
    pip install "montest[pytest] @ git+https://github.com/BBVA/montest.git@main"
 
-Import it explicitly:
+This command installs Montest from Git. The ``uv`` command above instead runs
+the examples from a repository checkout.
+
+Import the adapter explicitly:
 
 .. code-block:: python
 
@@ -38,17 +62,46 @@ Import it explicitly:
 
 The base ``montest`` package remains dependency-free: ``import montest`` does
 not import pytest. Montest supplies no pytest plugin, marker, decorator, or
-injected fixture. Your ordinary pytest fixtures define the data source and
-control its lifetime. See :doc:`installation` for the package boundary.
+injected fixture. Ordinary pytest fixtures define the data source and control
+its lifetime. See :doc:`installation` for the package boundary.
 
-The developer mental model
---------------------------
+The pytest workflow
+-------------------
 
-Read a stochastic test in this order:
+Every executable example follows the same public sequence:
+
+#. An ordinary pytest fixture returns a ``CachedSamples`` instance whose scope
+   controls the lifetime of its process-local cache.
+#. The test constructs a fresh stopping criterion from its acceptable and
+   concerning domain models.
+#. ``stochastic(...)`` yields one raw sample at a time. The test converts that
+   sample to one domain observation and submits it with ``run.observe(...)``.
+#. When the criterion stops iteration, ``run.assert_decision(...)`` checks one
+   named domain outcome.
+
+A complete expected-behavior test
+---------------------------------
+
+The coin example keeps statistical plumbing outside the test body. The test
+therefore exposes only the fixture, raw sample, observation, criterion, and
+required decision:
+
+.. literalinclude:: ../examples/pytest/tests/test_coin_fairness.py
+   :language: python
+   :pyobject: test_fair_coin_has_no_selected_side_bias_for_heads
+   :caption: Expected behavior from the executable coin example
+
+The `complete coin module
+<https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_coin_fairness.py>`_
+defines the requirement constants, source configuration, likelihood-ratio
+helper, cache fixtures, expected-behavior tests, and known-defect demonstration.
+
+How to read the test
+--------------------
 
 ``fixture``
-   An ordinary pytest fixture owns a source configuration and returns cached
-   raw samples. Its scope controls how long the cache lives.
+   An ordinary pytest fixture owns one source configuration and returns cached
+   raw samples. Its scope controls how long that cache lives.
 
 ``raw sample``
    One value produced by the system or simulator: a flip, dice pair, wheel
@@ -56,13 +109,13 @@ Read a stochastic test in this order:
 
 ``observation``
    The domain fact extracted from one raw sample and submitted to the
-   criterion: for example, ``is_heads`` or ``contains_emoji(response)``. It is
-   not necessarily the raw value.
+   criterion, such as ``is_heads`` or ``contains_emoji(response)``. It need not
+   have the same type as the raw sample.
 
 ``criterion``
-   A fresh stopping rule for this one test. It accumulates observations and
-   decides when there is enough evidence. Create it from the requirement, not
-   from a previous test's state.
+   A fresh stopping rule for one test. It accumulates observations and decides
+   when there is enough evidence. Construct it from the requirement, not from
+   another test's state.
 
 ``run``
    The explicit context-managed bridge between raw samples and the criterion.
@@ -70,58 +123,8 @@ Read a stochastic test in this order:
    observation before requesting the next sample.
 
 ``decision``
-   The terminal conclusion. A test normally asserts the named domain outcome,
-   not a numeric evidence trace.
-
-A canonical test
-----------------
-
-Put statistical plumbing in a small domain-named helper. Keep the test body
-about the behavior being required:
-
-.. code-block:: python
-
-   import random
-   import math
-
-
-   import pytest
-
-   from montest import Decision, sprt
-   from montest.pytest import CachedSamples, cached_samples, stochastic
-
-   NO_SELECTED_SIDE_BIAS_DETECTED = Decision.ACCEPT_H0
-
-   @pytest.fixture(scope="session")
-   def fair_flips() -> CachedSamples[bool]:
-       rng = random.Random(42)
-       return cached_samples(lambda: rng.random() < 0.5)
-
-   def selected_side_evidence(is_heads: bool) -> float:
-       return (
-           math.log(0.65 / 0.50)
-           if is_heads
-           else math.log(0.35 / 0.50)
-       )
-
-   def detect_selected_side_bias():
-       # Keep the likelihood model and its named parameters beside this helper.
-       return sprt(llr=selected_side_evidence, alpha=0.05, beta=0.10,
-                   max_samples=500)
-
-   def test_coin_has_no_selected_side_bias(
-       fair_flips: CachedSamples[bool],
-   ) -> None:
-       with stochastic(fair_flips, detect_selected_side_bias()) as run:
-           for is_heads in run:
-               run.observe(is_heads)
-
-       run.assert_decision(NO_SELECTED_SIDE_BIAS_DETECTED)
-
-The fixture provides raw flips. ``is_heads`` is the observation. The helper
-encodes the requirement's model. The final assertion uses a domain name, so a
-reader need not understand the criterion implementation to understand what the
-test requires.
+   The terminal conclusion. A feature test normally asserts a named domain
+   outcome rather than a numeric evidence trace.
 
 Requirement first; statistical terms second
 --------------------------------------------
@@ -179,123 +182,67 @@ They use ``pytest.mark.xfail(strict=True, raises=pytest.fail.Exception)``:
 This is pytest behavior, not a special Montest outcome. H1 is never the
 expected successful result of a test that requires H0.
 
-Caching and distributions
--------------------------
+Cached samples and distribution boundaries
+------------------------------------------
 
-``cached_samples(generate)`` stores successful raw values in memory. Each
-``iter(samples)`` cursor begins at sample zero, so tests using the same fixture
-replay the same prefix. A test that needs more values extends only the uncached
-suffix. This is useful for expensive, seeded, or externally obtained samples;
-it does not copy cached objects, so treat them as immutable.
+``cached_samples(generate)`` stores successful raw values in memory. Every
+``iter(samples)`` cursor starts at sample zero, replays the shared cached prefix,
+and extends only the uncached suffix. Cached objects are returned without
+copying and must be treated as immutable.
 
-Fixture scope chooses cache scope. A session-scoped fixture shares one cache in
-one pytest process. Use a separate fixture instance whenever a setting changes
-the data-generating distribution: model or model version, prompt, input
+Fixture scope controls cache scope. A session-scoped fixture shares one cache
+inside one pytest process. Use a separate fixture and cache whenever a setting
+changes the data-generating distribution: model or model version, prompt, input
 population, temperature, tool configuration, simulator parameters, or any
-other source configuration. xdist workers are separate processes and therefore
-make separate external calls.
+other source configuration. pytest-xdist workers are separate processes and
+therefore create separate caches and can repeat external calls.
 
-Shared samples and statistical independence
--------------------------------------------
+Independent cursors provide execution-state independence, not statistical
+independence. Tests replaying shared raw observations are correlated. Montest
+does not apply multiple-testing or family-wise-error corrections, including
+when several child criteria receive facts derived from one raw sample.
 
-Every test gets an independent cursor beginning at cached sample zero, and
-differently sized sequential tests replay the same prefix before extending the
-shared cache. Cursor independence is execution-state independence only.
-
-Replaying a shared cache does not change one test's marginal input prefix
-relative to consuming the same process-local stream afresh. It preserves only
-the same nominal/approximate operating characteristics the configured criterion
-would have had on that stream; it does not create exact alpha/beta guarantees.
 For each test, derived observations must satisfy the criterion's modeled
-likelihood-ratio process—usually correctly specified within-test iid
-observations or another explicitly valid conditional model. Keep generation
-configuration unchanged. Fix the raw-to-observation mapping, criterion, and
-cache reuse before seeing results; do not adapt them to another test's outcome.
-A finite ``max_samples`` may produce ``Decision.INCONCLUSIVE``.
-
-Tests sharing raw observations are correlated, not statistically independent.
-Montest does not apply multiple-testing or family-wise error corrections. This
-is especially important when several child criteria use one raw sample: a
-composite decision has different, uncorrected operating characteristics from
-any individual child.
-
-Use separate fixture instances for different models, model versions, prompts,
-input distributions, temperatures, tool configurations, or any other setting
-that changes the data-generating distribution. Treat cached objects as
-immutable. In-memory session caches are per pytest process, so xdist workers
-make separate external calls.
+likelihood-ratio process, usually correctly specified within-test iid
+observations or another explicitly valid conditional model. Fix the source
+configuration, raw-to-observation mapping, criterion, and cache reuse before
+seeing results; do not adapt them to another test's outcome. A finite
+``max_samples`` may produce ``Decision.INCONCLUSIVE``.
 
 Practical error handling
 ------------------------
 
-Let source and domain exceptions fail normally. Do not relabel an unavailable
-credential, network failure, invalid source configuration, or criterion bug as
-an H1 decision or an expected xfail. The context preserves an exception raised
-by its body, source, or criterion so its original cause remains visible.
+Let source, conversion, and criterion exceptions fail normally. Do not relabel
+an unavailable credential, network failure, invalid source configuration, or
+criterion bug as an H1 decision or as the known-defect xfail. The context
+preserves the original exception.
 
-For routine feature tests, assert only the domain decision. ``run.result`` and
-``SPRTResult`` fields are diagnostic tools for investigating a surprising test
+For routine feature tests, assert only the named domain decision. ``run.result``
+and ``SPRTResult`` fields are diagnostic tools for investigating a surprising
 result, not normal product assertions. For composites, ``CompositeResult`` can
 show terminal direct-child results, but an early composite decision may leave
 other children pending or skipped; absent child evidence is not evidence for
-that child. Do not reconstruct child evidence from the last raw sample.
+that child.
 
-If a child criterion in a composite raises, that exception is not converted to a
-child decision and later children for that observation are not processed. Earlier
-children may already have received the observation or reached a terminal state;
-the composite and run cannot roll those child mutations back. Fix the child
-criterion or input model and rerun with a fresh criterion rather than treating
-that partial state as a composite conclusion.
+The `live LLM example
+<https://github.com/BBVA/montest/blob/main/examples/pytest/tests/test_llm_emoji.py>`_
+keeps missing-credential handling separate from its strict known-defect xfail.
+Without credentials it makes no paid request; that skip condition is not a
+substitute for running the credentialed test.
 
-Advanced adapter reference
---------------------------
+Protocol constraints
+--------------------
 
-The adapter is synchronous only. It intentionally has no asynchronous context
-manager or async source API, and Behave support is planned rather than
-implemented. It delegates statistical transitions to the supplied criterion and
-does not reset it; construct a fresh criterion for each test.
+A run is single-use and active only inside its context. Each yielded raw sample
+must receive exactly one observation before the next sample is requested.
+Construct a fresh criterion for every test; the adapter does not reset it.
 
-``CachedSamples`` has an append-only, process-local cache. Its cursors return
-the original object identity. One lock protects lookup, generation, and append,
-so concurrent cursors do not generate the same uncached index twice. An ordinary
-source exception is propagated unchanged without advancing or caching; a later
-attempt retries that index. A source ``StopIteration`` becomes
-``RuntimeError("Sample generator raised StopIteration.")`` with the original
-exception as its cause, likewise without advancing or caching.
+Source, conversion, and criterion exceptions propagate unchanged. A clean
+context exit requires the last yielded sample to have been observed and the
+criterion to have reached a terminal decision. After exit, the terminal result,
+observation count, and ``assert_decision`` remain available.
 
-A ``StochasticRun`` is one-use: entering it opens one cursor; re-entering raises
-``RuntimeError("Stochastic run cannot be entered more than once.")``. Before
-entry and after exit, iteration, ``next(run)``, and ``observe`` raise
-``RuntimeError("Stochastic run is not active.")``. While active, a terminal run
-stops iteration; otherwise a second raw sample before observing the first raises
-``RuntimeError("Current sample must be observed before requesting another sample.")``.
-``observe`` after a terminal decision raises
-``RuntimeError("Stochastic run already reached a terminal decision.")``; without
-a pending sample it raises ``RuntimeError("No sample is awaiting an observation.")``.
-
-A successful observation is passed to the criterion at its zero-based index,
-then increments ``n_observed`` exactly once. If the criterion raises, its
-exception and any internal mutation are preserved, but the run's count/result
-stay unchanged and its raw sample remains pending. A clean context exit with a
-pending sample raises ``RuntimeError("Stochastic run exited with an unobserved sample.")``;
-a clean non-terminal exit instead raises
-``RuntimeError("Stochastic run exited before the criterion reached a terminal decision.")``.
-After exit, only ``n_observed``, an already-terminal ``result``, and
-``assert_decision`` remain usable. Accessing a non-terminal result raises
-``RuntimeError("Stochastic run has not reached a terminal decision.")``.
-``assert_decision(Decision.CONTINUE)`` raises
-``ValueError("expected decision must be terminal")``.
-
-When the context body, source, or criterion raises, ``__exit__`` makes the run
-inactive and returns ``False`` without replacing that exception with lifecycle
-validation. On a clean exit, the unobserved-sample error takes precedence over
-the non-terminal error. A terminal mismatch calls ``pytest.fail(...,
-pytrace=False)`` with exactly::
-
-   Montest stochastic decision mismatch
-   expected: {expected.value}
-   actual: {result.decision.value}
-   observations: {n_observed}
-   result: {result!r}
-
-The full public symbols are listed in :doc:`api`.
+The adapter is synchronous only. It provides no asynchronous source API,
+asynchronous context manager, pytest plugin, or injected fixture. Behave support
+is planned rather than implemented. Exact methods, lifecycle exceptions, result
+fields, and assertion diagnostics are documented in :doc:`api`.
