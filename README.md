@@ -8,9 +8,14 @@ outcome as conclusive.
 
 ## Core install
 
+The PyPI distribution is not available yet while the project name is being
+claimed. Until then, install the dependency-free Montest core from Git:
+
 ```bash
-pip install montest
+pip install "montest @ git+https://github.com/BBVA/montest.git@main"
 ```
+
+For reproducible environments, replace `main` with a commit SHA.
 
 The base install contains the dependency-free stochastic core and has no runtime
 dependencies. Use its sequential iterators and criteria directly when pytest is
@@ -18,10 +23,10 @@ not the test runner.
 
 ## Pytest workflow
 
-Install the explicit optional adapter:
+Install the explicit optional adapter from the same Git repository:
 
 ```bash
-pip install "montest[pytest]"
+pip install "montest[pytest] @ git+https://github.com/BBVA/montest.git@main"
 ```
 
 `import montest` remains dependency-free and does not import pytest. The adapter

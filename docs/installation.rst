@@ -4,11 +4,14 @@ Installation
 Core install
 ------------
 
-Install the dependency-free Montest core:
+The PyPI distribution is not available yet while the project name is being
+claimed. Until then, install the dependency-free Montest core from Git:
 
 .. code-block:: bash
 
-   pip install montest
+   pip install "montest @ git+https://github.com/BBVA/montest.git@main"
+
+For reproducible environments, replace ``main`` with a commit SHA.
 
 The base package contains decisions, observation results, stopping criteria,
 sequential iterators, SPRT, and explicit composites. It has no runtime
@@ -17,12 +20,12 @@ dependencies.
 pytest adapter
 --------------
 
-Install the optional synchronous pytest adapter in the environment that runs
-your tests:
+Install the optional synchronous pytest adapter from the same Git repository in
+the environment that runs your tests:
 
 .. code-block:: bash
 
-   pip install "montest[pytest]"
+   pip install "montest[pytest] @ git+https://github.com/BBVA/montest.git@main"
 
 Import its public constructors from ``montest.pytest``. Plain ``import
 montest`` remains dependency-free and does not import pytest. The adapter adds

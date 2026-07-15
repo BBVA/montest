@@ -55,10 +55,10 @@ SPRT
 pytest adapter
 --------------
 
-Install ``montest[pytest]`` before importing this optional adapter. It is not
-imported by the dependency-free ``montest`` core. The adapter is synchronous,
-explicit, and has no pytest plugin or injected fixture; see :doc:`integrations`
-for its lifecycle and error contracts.
+Install ``montest[pytest]`` from Git before importing this optional adapter.
+It is not imported by the dependency-free ``montest`` core. The adapter is
+synchronous, explicit, and has no pytest plugin or injected fixture; see
+:doc:`integrations` for its lifecycle and error contracts.
 
 .. autoclass:: montest.pytest.CachedSamples
    :members:

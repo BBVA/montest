@@ -24,11 +24,11 @@ same workflow in progressively richer tests:
 Installation
 ------------
 
-Install the optional adapter in the environment that runs pytest:
+Install the optional adapter from Git in the environment that runs pytest:
 
 .. code-block:: console
 
-   pip install "montest[pytest]"
+   pip install "montest[pytest] @ git+https://github.com/BBVA/montest.git@main"
 
 Import it explicitly:
 
