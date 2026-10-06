@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Montest run report</title>
+<style>$css</style>
+</head>
+<body>
+<noscript>This report needs JavaScript to show recorded evidence.</noscript>
+<div id="montest-report"></div>
+<script>$javascript</script>
+<script id="montest-data" type="application/json">$payload</script>
+<script>
+Elm.Main.init({
+  node: document.getElementById("montest-report"),
+  flags: JSON.parse(document.getElementById("montest-data").textContent)
+});
+</script>
+</body>
+</html>

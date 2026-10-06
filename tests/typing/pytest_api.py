@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import assert_type
 
 from montest import Decision, ObservationResult
@@ -49,11 +50,20 @@ criterion = LengthCriterion()
 
 direct_run = StochasticRun(source, criterion)
 factory_run = stochastic(source_from_factory, criterion)
+recorded_run = stochastic(
+    source,
+    LengthCriterion(),
+    record_to=Path("recorded.jsonl"),
+    serialize_sample=lambda raw: raw.hex(),
+    serialize_observation=lambda length: length,
+)
 
 assert_type(source, CachedSamples[bytes])
 assert_type(source_from_factory, CachedSamples[bytes])
 assert_type(iter(source), Iterator[bytes])
 assert_type(direct_run, StochasticRun[bytes, int, LabelledResult])
 assert_type(factory_run, StochasticRun[bytes, int, LabelledResult])
+assert_type(recorded_run, StochasticRun[bytes, int, LabelledResult])
+assert_type(recorded_run.observe(6, metadata={"origin": "typed"}), LabelledResult)
 assert_type(direct_run.observe(6), LabelledResult)
 assert_type(direct_run.result, LabelledResult)

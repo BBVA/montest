@@ -20,6 +20,7 @@
           buildInputs = [
             pkgs.uv
             pkgs.go-task
+            pkgs.nodejs
             pkgs.python311
             pkgs.python312
             pkgs.python313

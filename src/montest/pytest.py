@@ -42,18 +42,33 @@ from __future__ import annotations
 
 import enum
 import threading
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from pathlib import Path
 from types import TracebackType
-from typing import Any, Generic, Literal, Self, TypeVar
+from typing import Any, Generic, Literal, Self, TypeVar, cast
 
 import pytest
 
 from montest._criterion import StoppingCriterion
+from montest._recording import (
+    JSONValue,
+    RunWriter,
+    error_type,
+    serialize_result,
+    validate_value,
+)
 from montest._types import Decision, ObservationResult
 
 Raw = TypeVar("Raw")
 Observed = TypeVar("Observed")
 ResultT = TypeVar("ResultT", bound=ObservationResult[Any])
+_NO_SAMPLE = object()
+
+
+def _identity(value: Any) -> Any:
+    return value
+
+
 
 __all__ = ["CachedSamples", "StochasticRun", "cached_samples", "stochastic"]
 
@@ -172,6 +187,11 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
         self,
         samples: CachedSamples[Raw],
         criterion: StoppingCriterion[Observed, ResultT],
+        *,
+        record_to: Path | None = None,
+        run_metadata: Mapping[str, JSONValue] | None = None,
+        serialize_sample: Callable[[Raw], JSONValue] | None = None,
+        serialize_observation: Callable[[Observed], JSONValue] | None = None,
     ) -> None:
         """Bind a replayable raw source to a fresh stopping criterion.
 
@@ -181,9 +201,21 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
         """
         self._samples = samples
         self._criterion = criterion
+        if record_to is None and (
+            run_metadata is not None
+            or serialize_sample is not None
+            or serialize_observation is not None
+        ):
+            raise ValueError("recording options require record_to")
+        self._record_to = record_to
+        self._run_metadata = dict(run_metadata) if run_metadata is not None else {}
+        self._serialize_sample = serialize_sample or _identity
+        self._serialize_observation = serialize_observation or _identity
+        self._writer: RunWriter | None = None
         self._state = _RunState.NEW
         self._cursor: Iterator[Raw] | None = None
         self._outstanding = False
+        self._pending_raw: Raw | object = _NO_SAMPLE
         self._n_observed = 0
         self._result: ResultT | None = None
 
@@ -195,8 +227,20 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
         """
         if self._state is not _RunState.NEW:
             raise RuntimeError("Stochastic run cannot be entered more than once.")
+        writer = (
+            RunWriter(self._record_to, self._run_metadata)
+            if self._record_to is not None
+            else None
+        )
+        try:
+            cursor = iter(self._samples)
+        except BaseException:
+            if writer is not None:
+                writer.close()
+            raise
+        self._writer = writer
+        self._cursor = cursor
         self._state = _RunState.ACTIVE
-        self._cursor = iter(self._samples)
         return self
 
     def __exit__(
@@ -212,15 +256,52 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
         and that the criterion produced a terminal result.
         """
         self._state = _RunState.EXITED
-        if exc_type is not None:
-            return False
-        if self._outstanding:
-            raise RuntimeError("Stochastic run exited with an unobserved sample.")
-        if self._result is None:
-            raise RuntimeError(
+        reason = (
+            "unobserved_sample"
+            if self._outstanding
+            else "no_terminal_decision"
+            if self._result is None
+            else None
+        )
+        lifecycle_error: RuntimeError | None = None
+        if exc_type is None and reason == "unobserved_sample":
+            lifecycle_error = RuntimeError(
+                "Stochastic run exited with an unobserved sample."
+            )
+        elif exc_type is None and reason == "no_terminal_decision":
+            lifecycle_error = RuntimeError(
                 "Stochastic run exited before the criterion reached "
                 "a terminal decision."
             )
+        recording_error: BaseException | None = None
+        if self._writer is not None:
+            event: dict[str, JSONValue] = {
+                "type": "run_end",
+                "status": "error"
+                if exc_type is not None
+                else "incomplete"
+                if reason is not None
+                else "terminal",
+                "decision": self._result.decision.value if self._result else None,
+                "n_observed": self._n_observed,
+                "reason": reason if exc_type is None else None,
+                "error_type": error_type(exc) if exc is not None else None,
+            }
+            try:
+                self._writer.write(event)
+            except BaseException as error:
+                recording_error = error
+            finally:
+                try:
+                    self._writer.close()
+                except BaseException as error:
+                    if recording_error is None:
+                        recording_error = error
+        if exc_type is None:
+            if lifecycle_error is not None:
+                raise lifecycle_error
+            if recording_error is not None:
+                raise recording_error
         return False
 
     def __iter__(self) -> Self:
@@ -253,10 +334,16 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
 
         assert self._cursor is not None
         sample = next(self._cursor)
+        self._pending_raw = sample
         self._outstanding = True
         return sample
 
-    def observe(self, observation: Observed) -> ResultT:
+    def observe(
+        self,
+        observation: Observed,
+        *,
+        metadata: Mapping[str, JSONValue] | None = None,
+    ) -> ResultT:
         """Submit the one derived observation for the current raw sample.
 
         The observation is not the raw value unless the raw domain is already
@@ -275,11 +362,52 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
         if not self._outstanding:
             raise RuntimeError("No sample is awaiting an observation.")
 
-        result = self._criterion.observe(observation, index=self._n_observed)
+        if self._writer is None and metadata is not None:
+            raise ValueError("metadata requires record_to")
+        if self._writer is not None:
+            raw = self._serialize_sample(cast(Raw, self._pending_raw))
+            observed = self._serialize_observation(observation)
+            sample_metadata: dict[str, JSONValue] = (
+                dict(metadata) if metadata is not None else {}
+            )
+            validate_value(raw)
+            validate_value(observed)
+            validate_value(sample_metadata)
+
+        try:
+            result = self._criterion.observe(observation, index=self._n_observed)
+        except BaseException as error:
+            if self._writer is not None:
+                try:
+                    self._writer.write(
+                        {
+                            "type": "observation_error",
+                            "index": self._n_observed,
+                            "raw": raw,
+                            "observed": observed,
+                            "metadata": sample_metadata,
+                            "error_type": error_type(error),
+                        }
+                    )
+                except BaseException:
+                    pass
+            raise
         self._outstanding = False
+        self._pending_raw = _NO_SAMPLE
         self._n_observed += 1
         if result.decision is not Decision.CONTINUE:
             self._result = result
+        if self._writer is not None:
+            self._writer.write(
+                {
+                    "type": "sample",
+                    "index": self._n_observed - 1,
+                    "raw": raw,
+                    "observed": observed,
+                    "metadata": sample_metadata,
+                    "result": serialize_result(result),
+                }
+            )
         return result
 
     @property
@@ -343,6 +471,11 @@ class StochasticRun(Generic[Raw, Observed, ResultT], Iterator[Raw]):
 def stochastic(
     samples: CachedSamples[Raw],
     criterion: StoppingCriterion[Observed, ResultT],
+    *,
+    record_to: Path | None = None,
+    run_metadata: Mapping[str, JSONValue] | None = None,
+    serialize_sample: Callable[[Raw], JSONValue] | None = None,
+    serialize_observation: Callable[[Observed], JSONValue] | None = None,
 ) -> StochasticRun[Raw, Observed, ResultT]:
     """Create an explicit context-managed run for one pytest test.
 
@@ -358,4 +491,11 @@ def stochastic(
     :returns: A new, inactive single-use run.
     """
 
-    return StochasticRun(samples, criterion)
+    return StochasticRun(
+        samples,
+        criterion,
+        record_to=record_to,
+        run_metadata=run_metadata,
+        serialize_sample=serialize_sample,
+        serialize_observation=serialize_observation,
+    )

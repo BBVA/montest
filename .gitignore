@@ -197,3 +197,8 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+# Elm report viewer development
+viewer/node_modules/
+viewer/elm-stuff/
+viewer/tests/GeneratedFixtures.elm

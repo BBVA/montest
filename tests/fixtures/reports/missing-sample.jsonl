@@ -1,0 +1,4 @@
+{"type":"run_start","schema_version":1,"run_id":"00000000000000000000000000000000","metadata":{}}
+{"type":"sample","index":0,"raw":"first","observed":true,"metadata":{},"result":{"kind":"composite","index":0,"decision":"continue","n_decided":0,"n_total":1,"results":{"child":{"kind":"sprt","index":0,"decision":"continue","cumulative_llr":1.5,"lower_bound":-2.25,"upper_bound":2.89,"n_observed":1}},"terminal_results":{}}}
+{"type":"sample","index":2,"raw":9007199254740993,"observed":false,"metadata":{},"result":{"kind":"composite","index":2,"decision":"accept_h1","n_decided":1,"n_total":1,"results":{"child":null},"terminal_results":{"child":{"kind":"sprt","index":1,"decision":"accept_h1","cumulative_llr":3.0,"lower_bound":-2.25,"upper_bound":2.89,"n_observed":2}}}}
+{"type":"run_end","status":"terminal","decision":"accept_h1","n_observed":3,"reason":null,"error_type":null}

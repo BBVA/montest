@@ -19,6 +19,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+montest = "montest.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

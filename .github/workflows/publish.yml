@@ -1,0 +1,247 @@
+name: Publish Python distribution
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Validate version tag
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag must match vX.Y.Z, got ${tag}"
+            exit 1
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  quality:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Verify lockfiles
+        run: |
+          nix develop --command uv lock --check
+          nix develop --command uv lock --project examples/pytest --check
+
+      - name: Sync dependencies
+        run: nix develop --command task sync
+
+      - name: Verify packaged viewer
+        run: |
+          nix develop --command task viewer:sync
+          nix develop --command task viewer:check
+          nix develop --command task viewer:test
+
+      - name: Check linter
+        run: nix develop --command task lint
+
+      - name: Check types
+        run: nix develop --command task typecheck
+
+      - name: Verify docs and pytest examples
+        run: |
+          nix develop --command task docs
+          nix develop --command uv run --project examples/pytest --locked python examples/pytest/runner.py list
+          nix develop --command uv run --project examples/pytest --locked python examples/pytest/runner.py run offline -q
+          nix develop --command env -u GOOGLE_API_KEY -u GEMINI_API_KEY uv run --project examples/pytest --extra llm --locked pytest examples/pytest/tests/test_llm_emoji.py -q
+
+  test:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - python: "3.11"
+            tox-env: "py311"
+          - python: "3.12"
+            tox-env: "py312"
+          - python: "3.13"
+            tox-env: "py313"
+          - python: "3.14"
+            tox-env: "py314"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Verify dev environment
+        run: nix develop --command bash -c "uv --version && python${{ matrix.python }} --version"
+
+      - name: Sync dependencies
+        run: nix develop --command task sync
+
+      - name: Run tests
+        run: nix develop --command task test TOX_ENV=${{ matrix.tox-env }}
+
+  build:
+    needs:
+      - validate-tag
+      - quality
+      - test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build distributions
+        run: nix develop --command uv build
+
+      - name: Verify distributions
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          nix develop --command python - <<'PY'
+          import email
+          import os
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("dist")
+          sdists = sorted(dist.glob("*.tar.gz"))
+          wheels = sorted(dist.glob("*.whl"))
+          if len(sdists) != 1 or len(wheels) != 1:
+              raise SystemExit(
+                  f"expected exactly one sdist and one wheel, got "
+                  f"sdists={[path.name for path in sdists]} "
+                  f"wheels={[path.name for path in wheels]}"
+              )
+
+          with zipfile.ZipFile(wheels[0]) as archive:
+              metadata_paths = [
+                  name
+                  for name in archive.namelist()
+                  if name.endswith(".dist-info/METADATA")
+              ]
+              if len(metadata_paths) != 1:
+                  raise SystemExit(
+                      f"expected exactly one wheel METADATA file, got {metadata_paths}"
+                  )
+              metadata = email.message_from_bytes(archive.read(metadata_paths[0]))
+
+          actual = metadata["Version"]
+          expected = os.environ["VERSION"]
+          if actual != expected:
+              raise SystemExit(
+                  f"tag version {expected} does not match built wheel version {actual}"
+              )
+          PY
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v5
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  publish-testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/montest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  smoke-testpypi:
+    needs:
+      - validate-tag
+      - publish-testpypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Install smoke from TestPyPI
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          smoke_dir="${RUNNER_TEMP}/testpypi-smoke"
+          nix develop --command uv venv "${smoke_dir}/.venv"
+
+          installed=0
+          for delay in 0 10 20 40 80 160; do
+            if [[ "${delay}" != "0" ]]; then
+              sleep "${delay}"
+            fi
+            if nix develop --command uv pip install --python "${smoke_dir}/.venv/bin/python" --no-deps --index-url https://test.pypi.org/simple/ "montest==${VERSION}"; then
+              installed=1
+              break
+            fi
+          done
+
+          if [[ "${installed}" != "1" ]]; then
+            echo "::error::Could not install montest==${VERSION} from TestPyPI"
+            exit 1
+          fi
+
+          cd "${smoke_dir}"
+          VERSION="${VERSION}" "${smoke_dir}/.venv/bin/python" -c 'import montest, os; assert montest.__version__ == os.environ["VERSION"]'
+
+  publish-pypi:
+    needs: smoke-testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/montest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

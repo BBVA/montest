@@ -24,13 +24,18 @@ from __future__ import annotations
 
 import enum
 import math
+import os
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from random import Random
 from typing import Final
+from uuid import uuid4
 
 import pytest
 
 from montest import ANY_OF_DECISION_MONOID, AllOf, Decision, sprt
+from montest._recording import JSONValue
 from montest.pytest import CachedSamples, cached_samples, stochastic
 
 EXPECTED_EUROPEAN_ROULETTE_RED_RATE: Final = 18 / 37
@@ -69,6 +74,95 @@ class Color(enum.Enum):
     RED = "red"
     BLACK = "black"
     GREEN = "green"
+
+RED_NUMBERS: Final = (
+    1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36
+)
+BLACK_NUMBERS: Final = tuple(
+    number for number in range(1, 37) if number not in RED_NUMBERS
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Spin:
+    number: int
+    wheel_rpm: float
+    ball_rpm: float
+    duration_ms: int
+
+
+def _color_of(number: int) -> Color:
+    if not 0 <= number <= 36:
+        raise ValueError("Roulette number must be between 0 and 36.")
+    if number == 0:
+        return Color.GREEN
+    return Color.RED if number in RED_NUMBERS else Color.BLACK
+
+
+def _spin_with_details(
+    color_rng: Random,
+    detail_rng: Random,
+    red_rate: float,
+    black_rate: float,
+    green_rate: float,
+) -> Spin:
+    color = spin_roulette(color_rng, red_rate, black_rate, green_rate)
+    numbers = (
+        RED_NUMBERS if color is Color.RED
+        else BLACK_NUMBERS if color is Color.BLACK
+        else (0,)
+    )
+    return Spin(
+        number=detail_rng.choice(numbers),
+        wheel_rpm=round(detail_rng.uniform(24, 28), 1),
+        ball_rpm=round(detail_rng.uniform(34, 38), 1),
+        duration_ms=detail_rng.randint(4200, 6200),
+    )
+
+
+def _recording_options(
+    request: pytest.FixtureRequest,
+    scenario: str,
+    seed: int,
+    source_rates: tuple[float, float, float],
+) -> tuple[Path | None, dict[str, JSONValue] | None]:
+    directory = os.environ.get("MONTEST_RECORD_DIR")
+    if not directory:
+        return None, None
+    return (
+        Path(directory) / f"roulette-{scenario}-{uuid4().hex}.jsonl",
+        {
+            "test_id": request.node.nodeid,
+            "scenario": scenario,
+            "seed": seed,
+            "source_rates": dict(
+                zip(("red", "black", "green"), source_rates, strict=True)
+            ),
+            "h0_rates": {
+                "red": EXPECTED_EUROPEAN_ROULETTE_RED_RATE,
+                "black": EXPECTED_EUROPEAN_ROULETTE_BLACK_RATE,
+                "green": EXPECTED_EUROPEAN_ROULETTE_GREEN_RATE,
+            },
+            "h1_rates": {
+                "red": CONCERNING_RED_OR_BLACK_RATE,
+                "black": CONCERNING_RED_OR_BLACK_RATE,
+                "green": CONCERNING_GREEN_RATE,
+            },
+            "alpha": SPRT_ALPHA,
+            "beta": SPRT_BETA,
+            "max_samples": MAXIMUM_SPINS,
+            "telemetry": "simulated",
+        },
+    )
+
+
+def _spin_metadata(spin: Spin) -> dict[str, JSONValue]:
+    return {
+        "wheel_rpm": spin.wheel_rpm,
+        "ball_rpm": spin.ball_rpm,
+        "duration_ms": spin.duration_ms,
+    }
+
 
 
 def spin_roulette(
@@ -171,26 +265,29 @@ def detect_color_overrepresentation() -> AllOf[Color]:
 
 
 @pytest.fixture(scope="session")
-def fair_spins() -> CachedSamples[Color]:
+def fair_spins() -> CachedSamples[Spin]:
     """Replay fair-wheel spins for every consumer of this one distribution."""
-    rng = Random(42)
+    color_rng = Random(42)
+    detail_rng = Random(1042)
     return cached_samples(
-        lambda: spin_roulette(
-            rng,
+        lambda: _spin_with_details(
+            color_rng,
+            detail_rng,
             SIMULATED_FAIR_RED_RATE,
             SIMULATED_FAIR_BLACK_RATE,
             SIMULATED_FAIR_GREEN_RATE,
         )
     )
 
-
 @pytest.fixture(scope="session")
-def rigged_spins() -> CachedSamples[Color]:
+def rigged_spins() -> CachedSamples[Spin]:
     """Keep the rigged wheel in another cache because its color rates differ."""
-    rng = Random(43)
+    color_rng = Random(43)
+    detail_rng = Random(1043)
     return cached_samples(
-        lambda: spin_roulette(
-            rng,
+        lambda: _spin_with_details(
+            color_rng,
+            detail_rng,
             SIMULATED_RIGGED_RED_RATE,
             SIMULATED_RIGGED_BLACK_RATE,
             SIMULATED_RIGGED_GREEN_RATE,
@@ -201,12 +298,32 @@ def rigged_spins() -> CachedSamples[Color]:
 # Expected behavior
 
 def test_fair_roulette_wheel_looks_normal(
-    fair_spins: CachedSamples[Color],
+    fair_spins: CachedSamples[Spin],
+    request: pytest.FixtureRequest,
 ) -> None:
-    with stochastic(fair_spins, detect_color_overrepresentation()) as run:
+    path, metadata = _recording_options(
+        request,
+        "fair",
+        42,
+        (
+            SIMULATED_FAIR_RED_RATE,
+            SIMULATED_FAIR_BLACK_RATE,
+            SIMULATED_FAIR_GREEN_RATE,
+        ),
+    )
+    with stochastic(
+        fair_spins,
+        detect_color_overrepresentation(),
+        record_to=path,
+        run_metadata=metadata,
+        serialize_sample=(lambda spin: {"number": spin.number}) if path else None,
+        serialize_observation=(lambda color: color.value) if path else None,
+    ) as run:
         for spin in run:
-            # Each spin becomes red/black/green color-match evidence in the children.
-            run.observe(spin)
+            run.observe(
+                _color_of(spin.number),
+                metadata=_spin_metadata(spin) if path else None,
+            )
 
     run.assert_decision(NO_OVERREPRESENTED_COLOR_DETECTED)
 
@@ -218,10 +335,31 @@ def test_fair_roulette_wheel_looks_normal(
     reason="A rigged wheel violates the no-overrepresented-color requirement.",
 )
 def test_rigged_roulette_wheel_violates_no_overrepresented_color_requirement(
-    rigged_spins: CachedSamples[Color],
+    rigged_spins: CachedSamples[Spin],
+    request: pytest.FixtureRequest,
 ) -> None:
-    with stochastic(rigged_spins, detect_color_overrepresentation()) as run:
+    path, metadata = _recording_options(
+        request,
+        "rigged",
+        43,
+        (
+            SIMULATED_RIGGED_RED_RATE,
+            SIMULATED_RIGGED_BLACK_RATE,
+            SIMULATED_RIGGED_GREEN_RATE,
+        ),
+    )
+    with stochastic(
+        rigged_spins,
+        detect_color_overrepresentation(),
+        record_to=path,
+        run_metadata=metadata,
+        serialize_sample=(lambda spin: {"number": spin.number}) if path else None,
+        serialize_observation=(lambda color: color.value) if path else None,
+    ) as run:
         for spin in run:
-            run.observe(spin)
+            run.observe(
+                _color_of(spin.number),
+                metadata=_spin_metadata(spin) if path else None,
+            )
 
     run.assert_decision(NO_OVERREPRESENTED_COLOR_DETECTED)

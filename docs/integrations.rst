@@ -197,6 +197,90 @@ population, temperature, tool configuration, simulator parameters, or any
 other source configuration. pytest-xdist workers are separate processes and
 therefore create separate caches and can repeat external calls.
 
+Recording a test run
+--------------------
+
+Pass ``record_to=Path("artifacts/run.jsonl")`` to ``stochastic`` to save one
+run. Use a unique path for each test invocation. Montest creates parent
+directories and rejects an existing file before it requests a sample.
+
+The run stores raw samples, submitted observations, and criterion results.
+Use ``run_metadata`` for test-level configuration. Pass ``metadata`` to
+``run.observe`` for measurements that belong to one sample:
+
+.. code-block:: python
+
+   from pathlib import Path
+
+   with stochastic(
+       samples,
+       criterion,
+       record_to=Path("artifacts/wheel.jsonl"),
+       run_metadata={"scenario": "fair", "seed": 42},
+       serialize_sample=lambda spin: {"number": spin.number},
+       serialize_observation=lambda color: color.value,
+   ) as run:
+       for spin in run:
+           run.observe(
+               color_of(spin.number),
+               metadata={"wheel_rpm": spin.wheel_rpm},
+           )
+
+The serializers must return JSON values. Without them, Montest saves the
+raw and observed values as they are. Choose saved fields explicitly for
+responses that can contain secrets or large payloads. Invalid values fail
+the run. Montest does not use ``repr`` or pickle to save them.
+
+The versioned JSONL file starts with ``run_start``. Each successful
+observation adds a ``sample`` event with a zero-based index, raw value,
+observed value, metadata, and result. An SPRT result includes its cumulative
+log-likelihood ratio and bounds. A composite result includes its child
+results, skipped children as ``null``, and terminal child results.
+
+A criterion exception adds ``observation_error``. A retry of that same
+sample adds a later ``sample`` event at the same index. ``run_end`` records
+the criterion decision and the run status: ``terminal``, ``incomplete``, or
+``error``. A file without ``run_end`` is incomplete. The run record does not
+save the pytest assertion outcome or make the sample cache persistent.
+
+The roulette example writes separate fair and rigged artifacts if
+``MONTEST_RECORD_DIR`` is set. Each record includes the wheel number,
+derived color, and simulated wheel speed, ball speed, and duration.
+Without that variable, the example writes no files.
+
+Offline HTML reports
+--------------------
+
+Convert one version-1 recording to a standalone report:
+
+.. code-block:: console
+
+   montest report artifacts/wheel.jsonl -o artifacts/wheel.html
+   python -m montest report artifacts/wheel.jsonl --output artifacts/wheel.html
+
+Open the HTML file in a browser. The file contains the data, styles, and
+compiled Elm viewer. Report generation needs Python only. The viewer needs
+JavaScript, but no network connection.
+
+The report shows the run status separately from the criterion decision.
+Its Wald plots use the recorded LLR values, bounds, indices, and local counts.
+Select a point to inspect its source sample. Retained terminal evidence has
+a hollow marker and no originating sample. The selector includes every
+observation-error attempt, including retries at the same index.
+
+Missing samples and incomplete runs remain visible. Large integer evidence
+outside the JavaScript safe range remains in the source JSON, without a
+rounded plot. The command rejects malformed recordings and existing output
+files. An incomplete or error run still produces a report with exit code 0.
+
+For viewer changes, maintainers run ``task viewer:sync`` and
+``task viewer:build`` in ``nix develop``. ``task viewer:check`` compares the
+compiled asset with the source. ``task viewer:test`` runs the shared evidence
+fixtures. The quality jobs require both checks before publication.
+
+Shared samples and statistical independence
+-------------------------------------------
+
 Independent cursors provide execution-state independence, not statistical
 independence. Tests replaying shared raw observations are correlated. Montest
 does not apply multiple-testing or family-wise-error corrections, including

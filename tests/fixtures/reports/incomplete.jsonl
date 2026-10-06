@@ -1,0 +1,2 @@
+{"type":"run_start","schema_version":1,"run_id":"00000000000000000000000000000000","metadata":{}}
+{"type":"sample","index":0,"raw":"first","observed":true,"metadata":{},"result":{"kind":"sprt","index":0,"decision":"continue","cumulative_llr":1.5,"lower_bound":-2.25,"upper_bound":2.89,"n_observed":1}}

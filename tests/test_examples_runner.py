@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -100,6 +101,51 @@ def test_offline_group_executes_seeded_examples(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     assert "4 passed" in completed.stdout
     assert "3 xfailed" in completed.stdout
+
+
+def test_roulette_run_writes_two_evidence_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "records"
+    monkeypatch.setenv("MONTEST_RECORD_DIR", str(directory))
+    completed = _run_runner(tmp_path, "run", "roulette", "-q")
+
+    assert completed.returncode == 0, completed.stderr
+    assert "1 passed" in completed.stdout
+    assert "1 xfailed" in completed.stdout
+    files = sorted(directory.glob("roulette-*.jsonl"))
+    assert len(files) == 2
+    red_numbers = {
+        1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36
+    }
+    for path, scenario, decision in zip(
+        files, ("fair", "rigged"), ("accept_h0", "accept_h1"), strict=True
+    ):
+        assert path.name.startswith(f"roulette-{scenario}-")
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        assert records[0]["type"] == "run_start"
+        assert records[0]["schema_version"] == 1
+        assert records[0]["metadata"]["scenario"] == scenario
+        assert records[0]["metadata"]["telemetry"] == "simulated"
+        assert records[-1]["type"] == "run_end"
+        assert records[-1]["status"] == "terminal"
+        assert records[-1]["decision"] == decision
+        for index, record in enumerate(records[1:-1]):
+            assert record["type"] == "sample"
+            assert record["index"] == index
+            number = record["raw"]["number"]
+            assert isinstance(number, int) and 0 <= number <= 36
+            color = (
+                "green" if number == 0
+                else "red" if number in red_numbers
+                else "black"
+            )
+            assert record["observed"] == color
+            assert 24 <= record["metadata"]["wheel_rpm"] <= 28
+            assert 34 <= record["metadata"]["ball_rpm"] <= 38
+            assert 4200 <= record["metadata"]["duration_ms"] <= 6200
+            assert set(record["result"]["results"]) == {"red", "black", "green"}
+        assert records[-1]["n_observed"] == len(records) - 2
 
 
 @pytest.mark.parametrize("group", ("llm", "all"))
