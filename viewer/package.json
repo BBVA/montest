@@ -1,1 +1,1 @@
-{"private":true,"scripts":{"build":"node scripts/build.mjs","check":"node scripts/build.mjs --check","test":"node scripts/test.mjs"},"devDependencies":{"elm":"0.19.1-6","elm-test":"0.19.1-revision17"}}
+{"private":true,"scripts":{"build":"node scripts/build.mjs","check":"node scripts/build.mjs --check","test":"node scripts/test.mjs"},"devDependencies":{"elm":"0.19.1-6","elm-test":"0.19.1-revision9"}}
